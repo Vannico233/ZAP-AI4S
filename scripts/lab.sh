@@ -29,6 +29,8 @@ case "$STAGE" in
     exec "$PY" -m tube_agent.lab.doctor --physics-only --output "runs/lab_v1/physics_$STAMP" "$@" ;;
   check)
     exec "$PY" -m tube_agent.lab.doctor --services --output "runs/lab_v1/preflight_$STAMP" "$@" ;;
+  vision-check)
+    exec "$PY" -m tube_agent.lab.doctor --services-only --output "runs/lab_v1/vision_check_$STAMP" "$@" ;;
   render-check)
     exec "$PY" scripts/check_render.py --output "runs/lab_v1/render_$STAMP" "$@" ;;
   sample|search|eval)
@@ -52,7 +54,7 @@ case "$STAGE" in
   replay)
     exec "$PY" -m tube_agent.lab.replay "$@" ;;
   *)
-    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|render-check|check|sample|search|export|sft|grpo|eval|replay} [options]"
+    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|render-check|vision-check|check|sample|search|export|sft|grpo|eval|replay} [options]"
     echo "sam: GPU 1; model: GPU 0; sft/grpo: GPU 2. Override SAM_GPU, QWEN_GPU, TRAIN_GPU."
     echo "First run physics, then start sam + model in separate terminals, then check."
     [[ "$STAGE" == help ]] || exit 1 ;;

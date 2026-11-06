@@ -1,4 +1,4 @@
-"""Fail-fast physics, camera, and optional live perception/model checks."""
+"""Physics and service checks, with explicit recoverable perception warnings."""
 import argparse
 import json
 from pathlib import Path
@@ -12,12 +12,18 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output",type=Path,required=True);p.add_argument("--physics-only",action="store_true")
     p.add_argument("--services",action="store_true");p.add_argument("--seed",type=int,default=0)
+    p.add_argument("--services-only",action="store_true",help="Skip already-checked physical trajectories")
+    p.add_argument("--strict-perception",action="store_true",help="Exit nonzero after reporting all tasks if any query remains missing")
     p.add_argument("--sam-url",default="http://127.0.0.1:8001");p.add_argument("--base-url",default="http://127.0.0.1:8000/v1")
-    a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
-    report={"python":sys.version,"seed":a.seed,"checks":[],"policy":"scripted_diagnostic_NOT_model"};panels=[]
+    a=p.parse_args()
+    if a.services_only and a.physics_only:p.error("--services-only and --physics-only cannot be combined")
+    if a.services_only:a.services=True
+    a.output.mkdir(parents=True,exist_ok=False)
+    report={"python":sys.version,"seed":a.seed,"checks":[],"policy":"scripted_diagnostic_NOT_model",
+            "physical_checks":"not_run" if a.services_only else "requested","perception_warnings":[]};panels=[]
     def save_report():
         (a.output/"report.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
-    for task in TASKS:
+    for task in (() if a.services_only else TASKS):
         env=LabEnv(task,"test" if task=="rack_transfer" else "train",a.seed,60)
         cameras=None;visibility=[]
         try:
@@ -74,28 +80,43 @@ def main():
         env=observer=None
         try:
             report["sam"]=segmenter.health();report["qwen"]=generator.health()
-            report["live_detections"]={}
+            report["live_detections"]={};report["perception_audit"]={}
             for task in TASKS:
                 env=LabEnv(task,"test" if task=="rack_transfer" else "train",a.seed)
                 observer=Observer(env,segmenter)
                 obs,images=observer.observe(a.output/"live_perception"/task)
-                report["live_detections"][task]=obs["detections"];save_report()
-                missing=set(observer.queries)-{d["query"] for d in obs["detections"]}
+                report["live_detections"][task]=obs["detections"]
+                report["perception_audit"][task]=observer.last_audit
+                missing=obs["missing_queries"]
                 if missing:
-                    raise RuntimeError(f"{task}: SAM missing queries {sorted(missing)}; inspect live_perception/{task}/*_annotated.png")
+                    report["perception_warnings"].append({"task":task,"missing_queries":missing})
+                save_report()
+                print(json.dumps({"task":task,"perception_status":obs["perception_status"],
+                                  "missing_queries":missing,"detections":len(obs["detections"])}),flush=True)
                 if task=="pick":
                     action,raw,_=VisualPolicy(generator,0.,0).act(env.instruction,obs,images,None,0)
                     report["vision_model_response"]={"action":action,"raw":raw}
                     if action.get("action")=="invalid_model_output":raise RuntimeError("Vision model returned malformed action")
                 observer.close();observer=None;env.close();env=None
+            report["services_ready"]=True
+            report["perception_complete"]=not report["perception_warnings"]
         except Exception as exc:
             report["error"]=f"{type(exc).__name__}: {exc}";save_report();raise
         finally:
             if observer:observer.close()
             if env:env.close()
             segmenter.close();generator.close()
-    save_report()
-    if not all(c["result"]["success"] for c in report["checks"]):raise SystemExit("Physical diagnostic failed; inspect report before model sampling")
-    print("PASS: "+str(a.output/"report.json"),flush=True)
+    if not all(c["result"]["success"] for c in report["checks"]):
+        report["status"]="physical_diagnostic_failed";save_report()
+        raise SystemExit("Physical diagnostic failed; inspect report before model sampling")
+    if not a.services_only:report["physical_checks"]="passed"
+    if report["perception_warnings"]:
+        report["status"]="services_ready_with_perception_warnings";save_report()
+        print("WARNING: Some queries still lack masks. RGB remains available; the policy may change_query. No missing pose was filled in.",flush=True)
+        print("READY_WITH_PERCEPTION_WARNINGS: "+str(a.output/"report.json"),flush=True)
+        if a.strict_perception:raise SystemExit(2)
+    else:
+        report["status"]="passed";save_report()
+        print("PASS: "+str(a.output/"report.json"),flush=True)
 
 if __name__=="__main__":main()

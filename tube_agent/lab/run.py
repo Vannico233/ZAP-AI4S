@@ -12,7 +12,7 @@ import numpy as np
 from tube_agent.run import summarize
 from .env import LabEnv,TASKS
 from .policy import HttpGenerator,VisualPolicy,execute,SYSTEM
-from .vision import Observer,SamClient
+from .vision import Observer,SamClient,PERCEPTION_VERSION
 
 def state(env):
     return np.r_[env.data.qpos,env.data.qvel,env.data.ctrl,env.data.eq_active,
@@ -40,6 +40,7 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                 row={"step":env.steps,"action":action,"raw_response":raw,"messages":messages,
                      "feedback":feedback,"state_after":state(env),"history_after":copy.deepcopy(policy.history),
                      "judge_after":env.result(),"origin_attempt":attempt}
+                row["perception"]=copy.deepcopy(observer.last_audit)
                 if hasattr(generator,"last_response_ids"):
                     row["response_ids"]=list(generator.last_response_ids)
                 records.append(row);log.write(json.dumps(row)+"\n");log.flush()
@@ -53,6 +54,8 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
         if env:env.close()
     result.update(task=task,split=split,seed=seed,attempt=attempt,policy="model",model="qwen-tube",
                   observation_mode="rgbd_sam3.1_detector",environment_version=LabEnv.VERSION,
+                  perception_version=PERCEPTION_VERSION,
+                  missing_detection_observations=sum(bool(r.get("perception",{}).get("missing_queries")) for r in records),
                   prompt_sha256=hashlib.sha256(SYSTEM.encode()).hexdigest(),demonstration=None,
                   max_steps=max_steps,search_prefix_length=len(prefix or []),error=error,seconds=round(time.monotonic()-started,2))
     (directory/"result.json").write_text(json.dumps(result,indent=2),encoding="utf-8")
@@ -108,6 +111,8 @@ def main():
             results.append(result)
             if a.search:tree.update(rows,result)
             summary={**summarize(results),"scene_count":1,"sampling_mode":"prefix_search" if a.search else "independent_rollouts",
+                     "perception_version":PERCEPTION_VERSION,
+                     "missing_detection_observations":sum(r["missing_detection_observations"] for r in results),
                      "interpretation":"Search yield is not an independent policy success rate" if a.search else "Same scene, different sampling RNG"}
             (run/"summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
             print(json.dumps(result),flush=True)

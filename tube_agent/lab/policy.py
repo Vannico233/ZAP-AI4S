@@ -22,6 +22,10 @@ robot proprioception. Object coordinates are estimates of VISIBLE surfaces, NOT
 simulator ground truth. Occlusion can hide objects. Two views may report the same
 object. Principal axes have no semantic sign; use RGB to identify the cap end.
 Query again if needed. No object is automatically attached to the gripper.
+Missing_queries means SAM returned no usable mask in either view; it does not
+mean the object is absent. Use RGB and change_query to refine its description.
+Segmentation_query records the actual phrase used for a candidate mask, possibly
+an appearance-based retry. Check RGB: a mask is not proof of correct identity.
 Known apparatus dimensions: tube nominal radius .012 m, overall length .114 m;
 square rack hole .028 m wide, floor z=.008 m, rim z=.050 m; tray top z=.004 m.
 The rack hole is at the rack's horizontal center. Estimate its position from vision.

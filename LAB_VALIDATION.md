@@ -1,5 +1,31 @@
 # Lab v1 validation - 2026-11-06
 
+## Recoverable missing-mask handling and appearance retries
+
+The latest server report progressed through native SAM inference and the
+pick-stage image-bearing Qwen check, then stopped because `teal tray` had no
+usable detection. The fixed-scene render depicts this target as a thin teal
+rectangle, so a successful SAM service request is not a guarantee that the
+original noun phrase will produce a mask. No replacement mask or pose is used.
+
+The new `sam_query_retry_v1` retries at most two documented appearance phrases
+only after both original views miss a known query. It preserves every mask's
+actual text prompt and records unresolved misses. Preflight distinguishes
+service failures from recoverable missing observations and reports all tasks;
+`--strict-perception` retains an optional complete-coverage gate. A visual-only
+entry point avoids rerunning physical trajectories that have already passed.
+
+All 31 lab/perception tests passed in 33.34 seconds. After adding an end-to-end
+sampling check, all seven perception tests passed in 2.69 seconds (32 distinct
+lab/perception tests). The CLI check confirmed an all-missing observation stays
+visible to the model and an immediate finish is recorded as a physical failure,
+not a service error or success. Tests cover alias recovery,
+bounded all-empty retries, original-query success without extra calls, unchanged
+SAM masks, propagation of service exceptions, all-task warning reports and
+strict-mode exit status. Their segmenters are test doubles: **actual SAM
+recognition accuracy for the new phrases is not locally validated**. The
+server's saved annotated images remain the evidence for that assessment.
+
 ## SAM 3.1 session API compatibility repair
 
 The server passed H100 EGL rendering and all five scripted physical/visibility

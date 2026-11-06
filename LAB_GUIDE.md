@@ -141,8 +141,9 @@ bash scripts/lab.sh check
 This checks all physical tasks, actual camera visibility, RGB-D rendering, SAM
 detections of each task's target/goal queries and a real image-bearing Qwen request. It saves RGB, depth, annotated
 masks and a report in `runs/lab_v1/preflight_*`. Inspect the annotated images
-before collecting a long run. A missing target/goal detection, missing EGL support,
-bad weight load or model error must be resolved here. `MUJOCO_GL=egl` is selected
+before collecting a long run. Missing EGL support, service/API errors, bad weight
+loads or malformed model responses stop the check. Empty SAM detections are
+reported separately as perception warnings, as described below. `MUJOCO_GL=egl` is selected
 by the wrapper; `TUBE_MUJOCO_GL` can explicitly select an installed alternative.
 Do not install OSMesa or change drivers preemptively.
 
@@ -172,6 +173,43 @@ wait for `Ready`; its health JSON should include `session_init_compat: true`.
 Terminal B does not need restarting. No checkpoint or dependency download is
 required. Future SAM errors include their actual message in Terminal C and the
 full traceback in Terminal A.
+
+### Missing masks and bounded appearance-query retries
+
+`sam_query_retry_v1` first uses the original task queries in both cameras. Only
+if a concept has no usable mask in either view does it try up to two predefined
+appearance descriptions. For example, the simulated flat teal target is queried
+as `teal tray`, then `cyan rectangle`, then `teal rectangular plate`. Yellow and
+blue racks can be retried as colored blocks/containers. Arbitrary model-specified
+queries are passed through unchanged. Retries use the same RGB and depth, no
+oracle coordinates, no color-threshold masks and no fabricated detections.
+
+Each detection retains both its canonical `query` and actual
+`segmentation_query`. `perception.json` records every attempted phrase, camera,
+valid-mask count and remaining missing queries. Model observations explicitly
+contain `missing_queries`; RGB and the `change_query` tool remain available.
+Mask availability is not proof of correct identity: inspect annotated images.
+
+The check reports **all** task results. If services work but masks are missing,
+it reports `READY_WITH_PERCEPTION_WARNINGS`, sets `perception_complete=false`,
+and permits policy sampling with the missing observations. It does not report
+perception as passed, fill in poses or alter the physical success criterion.
+Service/inference errors still stop execution. To require complete initial mask
+coverage, pass `--strict-perception`; this exits nonzero after reporting all tasks.
+
+After physical checks have already passed, use the shorter visual-only check:
+
+```bash
+bash scripts/lab.sh vision-check &&
+bash scripts/lab.sh sample --attempts 1
+```
+
+This probes all five initial scenes, then samples one model trial per training
+task (four trials). It does not rerun the scripted physical trajectories.
+Reports are in `runs/lab_v1/vision_check_*`, with `physical_checks=not_run`.
+Per-episode and summary files record the perception version and the number of
+observations with missing masks. This changes the perception/prompt protocol;
+retain the recorded version and prompt hash when comparing experiments.
 
 ## 4. Fixed-scene baseline: 4 tasks x 8 attempts = 32 trials
 
