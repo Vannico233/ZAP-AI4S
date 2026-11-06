@@ -54,11 +54,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("stage", choices=("torch", "packages"))
     parser.add_argument("--index-url", required=True)
+    parser.add_argument("--constraint")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     requirements = (["torch==2.10.0", "torchvision==0.25.0"] if args.stage == "torch" else
                     ["-r", str(root / "requirements.txt"),
                      "-r", str(root / "requirements-model.txt"), "pytest>=8"])
+    if args.constraint:
+        requirements.extend(["--constraint", args.constraint])
     return install(requirements, args.index_url, root / ".bootstrap-linux" / f"pip-{args.stage}.log")
 
 

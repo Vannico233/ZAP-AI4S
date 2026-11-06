@@ -3,7 +3,7 @@
 用 **Qwen3.5-4B → 简单 JSON 动作 → MuJoCo Panda 机械臂**，完成两个实验室基础操作。
 核心只有仿真、模型接口、运行记录和自采成功轨迹微调；不依赖 Open-RUA 的服务调度、MCP、SAM、动作模型或多机器人框架。
 
-本地 Python 3.13.5 已通过 37 项测试；规则策略的常规拿起、搬运检查均为 20/20。
+本地 Python 3.13.5 已通过 41 项测试；规则策略的常规拿起、搬运检查均为 20/20。
 这些不是 Qwen 的成绩，完整验证范围和示例视频见 [VALIDATION.md](VALIDATION.md)。
 
 ## 当前实现范围
@@ -30,30 +30,30 @@ cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong
 git clone https://github.com/Vannico233/ZAP-AI4S.git
 cd ZAP-AI4S
 export TUBE_PYTHON_BIN=/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/.runtime/py311/bin/python
+export TUBE_NO_PROXY=1
+export TUBE_PYPI_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 bash scripts/prepare_cpu.sh
 ```
 
-脚本使用共享目录中已有的 **Python 3.11** 创建项目专用环境 `.venv-linux`，不再下载 uv 或 Python，也不修改 DiG 环境的依赖。未设置 `TUBE_PYTHON_BIN` 时使用当前终端的 `python`；已有可用的 `.venv-linux` 则直接复用。接受 Python 3.10–3.13，GPU 实例系统自带的 Python 3.13.5 不限制项目环境的版本。安装 PyTorch 2.10.0 / torchvision 0.25.0 的 **CUDA 12.8** 版本，以及 Transformers 5.3.0。没有 vLLM / FlashAttention / FLA 等编译依赖；先用 PyTorch 自带实现，吞吐量并非最优。
+脚本使用共享目录中已有的 **Python 3.11** 创建项目专用环境 `.venv-linux`，不再下载 uv 或 Python，也不修改 DiG 环境的依赖。未设置 `TUBE_PYTHON_BIN` 时使用当前终端的 `python`；已有可用的 `.venv-linux` 则直接复用。接受 Python 3.10–3.13，GPU 实例系统自带的 Python 3.13.5 不限制项目环境的版本。
+
+**默认从本地复用 PyTorch。** 用户已确认 DiG 中有 `torch 2.10.0+cu128`、`torchvision 0.25.0+cu128`，与本项目需要的版本完全一致。脚本检查版本、依赖和 CPU 算子后，将这两个包及其依赖复制到项目环境，不联网下载 PyTorch、CUDA 包。复制使用独立文件，不使用硬链接，也不引入 DiG 的其他训练框架或可选加速扩展；会先检查剩余磁盘空间。重复运行时，已通过检查的完整 Torch 环境会直接复用。
+
+随后在项目环境补装 Transformers 5.3.0 等所需依赖，并用 `.venv-linux/torch-constraints.txt` 固定已经复用的 Torch/CUDA 版本。DiG 的 Transformers 5.22.1 不会被修改。没有 vLLM / FlashAttention / FLA 等编译依赖；先用 PyTorch 自带实现，吞吐量并非最优。
 
 虚拟环境仍依赖基础 Python 的文件，因此**基础解释器和项目都必须在 CPU/GPU 共享挂载中**，且两端绝对路径相同。用户确认的基础解释器是 `DiG/.runtime/py311`；GPU 实验完成前请保留该目录。脚本会检查基础解释器和项目是否都位于共享根目录下，默认共享根目录为项目的父目录（这里是 `wangningchong`）；其他布局可设置 `TUBE_SHARED_ROOT`。这个路径检查不能替代 GPU 上的实际启动检查。
 
-普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。CPU 实例仍需访问这两个包下载站。脚本直接使用现有 pip，不强制升级；依赖下载出现哈希不符、超时或连接中断时最多尝试三轮，后两轮绕过 pip 缓存重新下载，保留 HTTPS 和哈希校验。版本不存在等非下载错误会立即停止。完整输出保存在 `.bootstrap-linux/pip-torch.log` 和 `.bootstrap-linux/pip-packages.log`。
+上面的 `TUBE_NO_PROXY=1` 针对已观察到的代理断连：只在安装脚本及其子进程内清除代理变量、绕过 pip 配置文件，不修改终端或系统的代理设置。示例将剩余依赖从清华镜像直连下载；如果服务器只能通过代理联网，请不设置 `TUBE_NO_PROXY`，并使用管理员提供的可用代理。镜像是否可达仍需在服务器上验证。
 
-如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple`；PyTorch 源可用 `TUBE_TORCH_INDEX_URL` 指定，但必须提供 CUDA 12.8 对应的软件包。重新下载不能保证修复持续的网络问题；pip 24 的这种重试不是大文件断点续传。
+未指定 `TUBE_PYPI_INDEX_URL` 时使用 `https://pypi.org/simple`。脚本直接使用现有 pip，不强制升级；依赖下载出现哈希不符、超时或连接中断时最多尝试三轮，后两轮绕过 pip 缓存重新下载，保留 HTTPS 和哈希校验。版本不存在等非下载错误会立即停止。剩余依赖的完整输出保存在 `.bootstrap-linux/pip-packages.log`。
 
-旧版若在升级 pip 时出现 `THESE PACKAGES DO NOT MATCH THE HASHES`，无需修改哈希或删除环境，更新后重跑即可：
+其他机器若没有现成的对应 Torch 环境，可以显式设置 `TUBE_TORCH_MODE=download` 从 CUDA 12.8 官方源下载；这不是本服务器的推荐路径。该模式的 PyTorch 源可用 `TUBE_TORCH_INDEX_URL` 指定。重新下载不能保证修复持续的网络问题；pip 24 的这种重试不是大文件断点续传。
 
-```bash
-git pull --ff-only
-bash scripts/prepare_cpu.sh
-```
-
-如果旧版脚本安装或下载 uv 失败（包括 `No matching distribution found`、`SSL_read ... unexpected eof`），更新后直接使用现成解释器，无需删除旧的 `.bootstrap-linux`：
+如果旧版在 uv、pip 或 Torch/CUDA 下载阶段失败，现有项目环境可以保留，更新并执行：
 
 ```bash
 git pull --ff-only
-export TUBE_PYTHON_BIN=/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/.runtime/py311/bin/python
-bash scripts/prepare_cpu.sh
+TUBE_NO_PROXY=1 TUBE_PYPI_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple bash scripts/prepare_cpu.sh
 ```
 
 GPU 端仍使用 `source .venv-linux/bin/activate`；随后 `python --version` 应显示项目环境的版本（新建时为 3.11.18），无需安装到 GPU 的系统 Python 中。PyTorch 和模型依赖版本保持不变。

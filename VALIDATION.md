@@ -6,7 +6,7 @@ torchvision 0.25.0+cpu、Transformers 5.3.0、PEFT 0.18.1。
 
 ## 已实际运行
 
-- `python -m pytest -q`：**37 passed**。涵盖物理抓取与搬运、掉落、空提交、越界、
+- `python -m pytest -q`：**41 passed**。涵盖物理抓取与搬运、掉落、空提交、越界、
   无效动作预算、真实本机 HTTP 闭环、自采数据过滤、训练标签屏蔽等。
 - 小型随机初始化 **Qwen3.5 架构**：LoRA 前向、反向、保存、重载和生成通过。
   这用于接口验证，不是 Qwen3.5-4B 权重的训练结果。
@@ -19,6 +19,12 @@ torchvision 0.25.0+cpu、Transformers 5.3.0、PEFT 0.18.1。
 - 安装流程不再强制升级 pip。用真实 **pip 24.0** 和本地 HTTP 包索引验证了三种情况：
   第一次下载哈希不符、第二次重新下载成功；连续三次哈希不符时停止且未安装损坏包；
   版本不存在时立即停止。这些测试未访问真实 PyPI/PyTorch 下载线路，也不代表服务器网络已经恢复。
+- 本地实际离线复制了 **13 个 CPU 版 Torch 及依赖包（约 0.5 GiB）** 到另一个独立环境，
+  验证 `pip check`、Torch/torchvision 导入与 CPU NMS 算子、`python -m torch.distributed.run --help` 通过。
+  确认目标 Torch 来自新环境，源文件样本的 SHA256 未改变；测试另覆盖复制后修改目标不影响源文件、
+  不引入无关包、拒绝越界路径和不满足版本的依赖。CUDA 版的实际复制与运行仍需服务器验证。
+- 用户提供的 DiG 环境版本：Torch 2.10.0+cu128、torchvision 0.25.0+cu128、Transformers 5.22.1。
+  默认流程只复制 Torch 的依赖树，项目另装 Transformers 5.3.0；未在本机访问或修改用户的 DiG 环境。
 - 视频生成和静态图片渲染通过。
 
 ## 规则策略的环境检查

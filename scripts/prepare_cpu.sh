@@ -8,6 +8,18 @@ PYTHON_BIN="${TUBE_PYTHON_BIN:-python}"
 SHARED_ROOT="${TUBE_SHARED_ROOT:-$(dirname "$PWD")}"
 PYPI_INDEX="${TUBE_PYPI_INDEX_URL:-https://pypi.org/simple}"
 TORCH_INDEX="${TUBE_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+TORCH_MODE="${TUBE_TORCH_MODE:-reuse}"
+if [[ "$TORCH_MODE" != reuse && "$TORCH_MODE" != download ]]; then
+  echo 'TUBE_TORCH_MODE must be reuse or download.' >&2
+  exit 1
+fi
+# Apply only within this script, leaving the caller's proxy settings untouched.
+if [[ "${TUBE_NO_PROXY:-0}" == 1 ]]; then
+  unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY PIP_PROXY
+  unset PIP_INDEX_URL PIP_EXTRA_INDEX_URL PIP_FIND_LINKS
+  export PIP_CONFIG_FILE=/dev/null
+  echo 'Direct downloads for this preparation run; proxy/pip config bypassed.'
+fi
 
 check_python() {
   "$1" - "$SHARED_ROOT" <<'PY'
@@ -45,12 +57,18 @@ if ! python -m pip --version >/dev/null 2>&1; then
   python -m ensurepip --upgrade
 fi
 echo "Python package index: $PYPI_INDEX"
-echo "PyTorch CUDA 12.8 index: $TORCH_INDEX"
+echo "PyTorch setup mode: $TORCH_MODE"
 # The existing pip is sufficient; upgrading it must not block preparation.
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 python -m pip --version
-python scripts/install_packages.py torch --index-url "$TORCH_INDEX"
-python scripts/install_packages.py packages --index-url "$PYPI_INDEX"
+if [[ "$TORCH_MODE" == reuse ]]; then
+  python scripts/reuse_torch.py
+  python scripts/install_packages.py packages --index-url "$PYPI_INDEX" --constraint "$PWD/.venv-linux/torch-constraints.txt"
+else
+  echo "PyTorch CUDA 12.8 index: $TORCH_INDEX"
+  python scripts/install_packages.py torch --index-url "$TORCH_INDEX"
+  python scripts/install_packages.py packages --index-url "$PYPI_INDEX"
+fi
 python -m pip check
 python -m pip freeze > .venv-linux/installed-packages.txt
 python -m tube_agent.doctor --model "${TUBE_MODEL_PATH:-/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model}"
