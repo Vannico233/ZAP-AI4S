@@ -1,0 +1,11 @@
+{
+  "version": "manual_transport_v1",
+  "provenance": "Hand-authored geometric controller, initialized from the existing ScriptedPolicy transport recipe. No model inference or learning.",
+  "approach_z": 0.20,
+  "grasp_center_offset_z": 0.003,
+  "carry_z": 0.19,
+  "place_surface_radius_offset_z": 0.006,
+  "open_width": 0.08,
+  "withdraw_z": 0.20,
+  "max_steps": 20
+}

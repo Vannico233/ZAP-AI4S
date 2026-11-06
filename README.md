@@ -104,6 +104,40 @@ python -m tube_agent.run --policy scripted --task transport --split test --episo
 
 `scripted` 是手写控制策略，只证明环境能完成任务，不是 Qwen 的成绩，也不会被导出成自采训练数据。MuJoCo 物理在 CPU 上运行；默认不创建图形窗口、不要求 GPU 渲染。
 
+### 固定种子逐步调试人工搬运命令
+
+无需调用模型，使用 `train/seed=0` 和可编辑的九条原始动作：
+
+```bash
+python -m tube_agent.manual --commands examples/manual_transport_seed0.json --output runs/manual_transport_seed0_v1
+```
+
+命令依次为靠近、下降、闭爪、抬升、横移、下降、松爪、撤离、提交。
+每步输出执行反馈和独立物理判定；目录保存前后观测、原始动作、`result.json`、
+`messages.json` 和用于录制的 `replay.jsonl`。调参数后使用新的输出目录，保留之前的尝试。
+不自动补全动作或追加 `finish`；中断/未完成与物理判定分开记录，拒绝覆盖旧目录。
+
+该方案以已有规则控制的几何参数为初值，固定场景首个完整方案即成功。
+`examples/manual_transport_controller_v1.json` 冻结了跨场景生成命令的规则：
+位置及方向取自各场景初始观测，高度和夹爪参数固定。一次性验证三个预定种子区间：
+
+```bash
+python scripts/validate_manual_transport.py --output runs/manual_transport_benchmark_v1
+```
+
+默认 validation 0–19、test 20–39、ood 20–39 各 20 个场景，全部结果均保留。
+本地结果为 20/20、20/20、15/20，详见 `examples/manual_transport_validation.json`。
+这是 `policy=manual` 的环境/控制可行性结果，不是 Qwen 成功率；这些轨迹不会进入现有模型自采 SFT 导出。
+控制参数、物理、奖励和成功判定没有因评测结果而修改，RL 尚未开始。
+
+有可用 OpenGL 的电脑可直接重放录制完整搬运：
+
+```bash
+python scripts/render_replays.py --data runs/manual_transport_seed0_v1/replay.jsonl --output runs/manual_transport_video_v1
+```
+
+视频会明确标注 `MANUAL CONTROL`，近景跟随试管，显示是否曾抬起及稳定放置时间。
+
 ## 3. GPU 实例：启动 Qwen
 
 终端 A：
