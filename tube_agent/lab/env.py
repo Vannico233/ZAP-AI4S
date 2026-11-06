@@ -27,7 +27,12 @@ def matrix_rpy(m):
 
 class LabEnv(TubeEnv):
     VERSION = "lab_v1"
-    def __init__(self, task="pick", split="train", seed=0, max_steps=40, frame_callback=None):
+    ACTION_PROTOCOL = "rpy_rounding_v2"
+    def __init__(self, task="pick", split="train", seed=0, max_steps=40, frame_callback=None,
+                 action_protocol=ACTION_PROTOCOL):
+        if action_protocol not in ("strict_rpy_v1", self.ACTION_PROTOCOL):
+            raise ValueError(f"Unknown action protocol: {action_protocol}")
+        self.action_protocol=action_protocol
         if task not in TASKS:
             raise ValueError(f"Unknown lab task: {task}")
         if task == "rack_transfer" and split == "train":
@@ -200,8 +205,19 @@ class LabEnv(TubeEnv):
         angular = float(np.arccos(np.clip((np.trace(target@self.data.site_xmat[self.tcp_id].reshape(3,3).T)-1)/2,-1,1)))
         return {"accepted":True,"reached":err<.008 and angular<.08,"position_error_m":round(err,5),"orientation_error_rad":round(angular,5)}
 
+    def _reject_action(self, reason):
+        if self.ended:raise RuntimeError("Episode already ended")
+        self.steps+=1;self.invalid_actions+=1
+        if self.steps>=self.max_steps:self._advance(.5);self.ended=True
+        return self.observe(),{"accepted":False,"reason":reason},self.ended
+
     def step(self, action):
+        modern=self.action_protocol==self.ACTION_PROTOCOL
+        if modern and action.get("action")=="invalid_model_output":
+            return self._reject_action("Response is not one JSON action. Return exactly one JSON object without explanation; do not omit required fields.")
         if action.get("action")=="move" and "rpy" not in action:
+            if modern:
+                return self._reject_action("move requires action, xyz [x,y,z] and rpy [roll,pitch,yaw]; rpy is missing. No orientation was inferred.")
             action={"action":"invalid_move_requires_xyz_and_rpy"}
         if action.get("action") != "move" or "rpy" not in action:
             return super().step(action)
@@ -212,9 +228,23 @@ class LabEnv(TubeEnv):
             xyz, rpy = np.asarray(action["xyz"],float), np.asarray(action["rpy"],float)
             if xyz.shape != (3,) or rpy.shape != (3,) or not np.isfinite(np.r_[xyz,rpy]).all():
                 raise ValueError("xyz and rpy must be finite vectors of length 3")
-            if np.any(xyz < [.20,-.4,.009]) or np.any(xyz > [.65,.4,.5]) or np.any(np.abs(rpy)>math.pi+1e-6):
+            requested_rpy=rpy.copy()
+            if modern:
+                violations=[f"{axis}={value:g} outside [{lo:g},{hi:g}] metres"
+                            for axis,value,lo,hi in zip("xyz",xyz,[.20,-.4,.009],[.65,.4,.5]) if not lo<=value<=hi]
+                violations += [f"{axis}={value:g} outside [-pi,pi] radians (rounding tolerance 0.0001)"
+                               for axis,value in zip(("roll","pitch","yaw"),rpy) if abs(value)>math.pi+1e-4]
+                if violations:raise ValueError("Invalid move: "+"; ".join(violations))
+                # Four-decimal sensor/model output can represent pi as 3.1416.
+                # Snap only the tiny +/-pi boundary neighborhood; never clamp XYZ.
+                near_pi=np.abs(np.abs(rpy)-math.pi)<=1e-4
+                rpy=np.where(near_pi,np.copysign(math.pi,rpy),rpy)
+            elif np.any(xyz < [.20,-.4,.009]) or np.any(xyz > [.65,.4,.5]) or np.any(np.abs(rpy)>math.pi+1e-6):
                 raise ValueError("TCP outside x[.2,.65],y[-.4,.4],z[.009,.5] or rpy outside [-pi,pi]")
             feedback = self.move_pose(xyz,rpy)
+            if modern and not np.array_equal(requested_rpy,rpy):
+                feedback["rpy_normalization"]={"requested":requested_rpy.tolist(),"executed":rpy.tolist(),
+                                               "reason":"pi boundary rounded within 0.0001 radians"}
         except (KeyError,TypeError,ValueError) as exc:
             self.invalid_actions += 1; feedback = {"accepted":False,"reason":str(exc)}
         if self.steps >= self.max_steps:
@@ -223,7 +253,8 @@ class LabEnv(TubeEnv):
 
     def proprioception(self):
         return {"tcp":np.round(self.tcp,4).tolist(),
-                "tcp_rpy":np.round(matrix_rpy(self.data.site_xmat[self.tcp_id].reshape(3,3)),4).tolist(),
+                "tcp_rpy":np.round(matrix_rpy(self.data.site_xmat[self.tcp_id].reshape(3,3)),
+                                   6 if self.action_protocol==self.ACTION_PROTOCOL else 4).tolist(),
                 "gripper_opening":round(float(sum(self.data.qpos[7:9])),4),
                 "steps_left":self.max_steps-self.steps}
 
@@ -239,6 +270,7 @@ class LabEnv(TubeEnv):
 
     def result(self):
         result = super().result()
+        result["action_protocol"]=self.action_protocol
         target=self.data.body("cap").xpos if self.lab_task=="unscrew" else self.tube_pos
         approach=.15*np.clip(1-np.linalg.norm(self.tcp-target)/getattr(self,"initial_target_distance",self.initial_distance),0,1)
         held=len(self._body_contacts(self.model.body("cap").id))==2 if self.lab_task=="unscrew" else bool(result["held"])

@@ -54,6 +54,7 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
         if env:env.close()
     result.update(task=task,split=split,seed=seed,attempt=attempt,policy="model",model="qwen-tube",
                   observation_mode="rgbd_sam3.1_detector",environment_version=LabEnv.VERSION,
+                  action_protocol=LabEnv.ACTION_PROTOCOL,
                   perception_version=PERCEPTION_VERSION,
                   missing_detection_observations=sum(bool(r.get("perception",{}).get("missing_queries")) for r in records),
                   prompt_sha256=hashlib.sha256(SYSTEM.encode()).hexdigest(),demonstration=None,

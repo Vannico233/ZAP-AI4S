@@ -1,5 +1,28 @@
 # Lab v1 validation - 2026-11-06
 
+## Audit of the first four real visual-policy trajectories
+
+The user supplied 160 recorded actions: 146 were rejected. Of those, 110 had
+valid XYZ but a four-decimal +/-pi representation rejected by the 1e-6 angular
+tolerance; one combined that issue with a genuinely invalid z=-0.01; 30 were
+noncompliant JSON responses and five omitted RPY. The original robot observation
+itself supplied `tcp_rpy=[3.1416,-0.0,-0.0]`, exposing an inconsistent interface.
+No successful trial can be inferred from these logs or from fixing this bug.
+
+`rpy_rounding_v2` accepts only a 1e-4 neighborhood of +/-pi and records execution
+at exact +/-pi, without clamping XYZ or inferring absent orientations. It uses
+six decimals for robot orientation observations and reports specific rejection
+reasons. All 43 action/lab/perception tests passed in 22.64 seconds. The exact
+first pick action from the user's log now reaches its commanded pose and yields
+the same physical state as an exact-pi command; true height/range/NaN errors are
+still rejected. This is an action execution check, not a new model success.
+
+Historical videos select the old protocol for results without `action_protocol`.
+Local replay matched every saved state and feedback for the old pick, transport
+and unscrew trajectories. The insert trajectory diverged across the server/local
+platforms and must not be presented as an exact local replay; retain the existing
+divergence check and render on the originating server when needed.
+
 ## Recoverable missing-mask handling and appearance retries
 
 The latest server report progressed through native SAM inference and the

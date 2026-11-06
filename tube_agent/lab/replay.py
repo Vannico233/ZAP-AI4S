@@ -20,7 +20,8 @@ def main():
     import imageio.v2 as imageio
     writer=imageio.get_writer(str(a.output/"episode.mp4"),fps=25,codec="libx264",quality=8,macro_block_size=16,
                              ffmpeg_params=["-movflags","+faststart"])
-    env=LabEnv(result["task"],result["split"],result["seed"],max_steps=result.get("max_steps",40))
+    env=LabEnv(result["task"],result["split"],result["seed"],max_steps=result.get("max_steps",40),
+               action_protocol=result.get("action_protocol","strict_rpy_v1"))
     cameras=Cameras(env);stage={"step":0,"action":{"action":"ready"}};last=None
     class Context:queries=[]
     context=Context();policy=VisualPolicy(None);matches=[]

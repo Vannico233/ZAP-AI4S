@@ -213,6 +213,18 @@ retain the recorded version and prompt hash when comparing experiments.
 
 ## 4. Fixed-scene baseline: 4 tasks x 8 attempts = 32 trials
 
+Action protocol `rpy_rounding_v2` corrects the old strict +/-pi boundary bug:
+RPY values within 0.0001 radians of +/-pi are executed as exact +/-pi and the
+normalization is recorded in feedback. XYZ limits are unchanged; larger angular
+violations, missing RPY and non-JSON responses still fail with specific feedback.
+Robot orientation observations now use six decimal places. Results record the
+action protocol. Historical results lacking that field replay with
+`strict_rpy_v1`, preserving their original action rejection behavior.
+
+The initial four-task model trial was affected by the old validator rejecting
+its own four-decimal pi representation (`3.1416`). Retain those logs as a bug
+diagnostic; rerun a fixed-seed pilot before drawing policy-performance conclusions.
+
 ```bash
 bash scripts/lab.sh sample
 ```
