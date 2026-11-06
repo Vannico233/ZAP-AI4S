@@ -1,0 +1,111 @@
+{
+  "format": 1,
+  "policy": "manual",
+  "task": "transport",
+  "split": "train",
+  "seed": 0,
+  "instruction": "Pick up the RED test tube and place it fully inside the teal tray. Release it, withdraw the gripper and leave it resting stably.",
+  "initial_observation": {
+    "observation_mode": "oracle_object_state",
+    "units": "metres and radians",
+    "tcp": [
+      0.4497,
+      0.0,
+      0.4605
+    ],
+    "gripper_opening": 0.08,
+    "objects": [
+      {
+        "name": "tube_red",
+        "center": [
+          0.461,
+          -0.1784,
+          0.0118
+        ],
+        "axis": [
+          0.9738,
+          -0.2275,
+          -0.0003
+        ],
+        "radius": 0.012
+      }
+    ],
+    "tray_center": [
+      0.45,
+      0.22,
+      0.004
+    ],
+    "tray_half_size": [
+      0.1,
+      0.09
+    ],
+    "steps_left": 20
+  },
+  "actions": [
+    {
+      "action": "move",
+      "xyz": [
+        0.461,
+        -0.1784,
+        0.2
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "move",
+      "xyz": [
+        0.461,
+        -0.1784,
+        0.0148
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "gripper",
+      "opening": 0.0
+    },
+    {
+      "action": "move",
+      "xyz": [
+        0.461,
+        -0.1784,
+        0.19
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "move",
+      "xyz": [
+        0.45,
+        0.22,
+        0.19
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "move",
+      "xyz": [
+        0.45,
+        0.22,
+        0.022
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "gripper",
+      "opening": 0.08
+    },
+    {
+      "action": "move",
+      "xyz": [
+        0.45,
+        0.22,
+        0.2
+      ],
+      "yaw": -0.22950460299902878
+    },
+    {
+      "action": "finish"
+    }
+  ]
+}

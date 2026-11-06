@@ -21,7 +21,7 @@ def test_processor_receives_typed_content_even_in_text_mode():
     assert original[0]["content"] == "rules"
 
 
-@pytest.mark.parametrize("prompt_variant", ["base", "geometry_v1"])
+@pytest.mark.parametrize("prompt_variant", ["base", "geometry_v1", "manual_demo_v1"])
 def test_model_http_loop_uses_real_physics(prompt_variant):
     controller = ScriptedPolicy("transport")
     received = []
@@ -73,6 +73,27 @@ def test_reject_ambiguous_output(text):
         parse_action(text)
 
 
+def test_manual_reference_is_valid_but_not_assistant_history():
+    path = Path(__file__).resolve().parents[1]/"examples/manual_transport_demo_v1.json"
+    demo = json.loads(path.read_text(encoding="utf-8"))
+    env = TubeEnv(demo["task"], demo["split"], demo["seed"])
+    policy = ModelPolicy("http://127.0.0.1:1/v1", "unused", prompt_variant="manual_demo_v1")
+    try:
+        assert demo["policy"] == "manual" and demo["split"] == "train"
+        assert demo["initial_observation"] == env.observe()
+        for action in demo["actions"]:
+            _, feedback, _ = env.step(action)
+            assert feedback["accepted"]
+        assert env.ended and env.result()["success"]
+        assert env.steps == len(demo["actions"]) == 9
+        # The reference contributes no assistant labels or already-executed turns.
+        assert len(policy.history) == 1 and policy.history[0]["role"] == "system"
+        assert "success" not in demo and "judge_after" not in demo
+    finally:
+        policy.close()
+        env.close()
+
+
 def write_episode(root, name, policy="model", split="train", success=True):
     path = root/name
     path.mkdir()
@@ -107,12 +128,16 @@ def test_empty_export_does_not_create_data(tmp_path):
     assert not (tmp_path/"data.jsonl").exists()
 
 
-def test_export_preserves_prompt_and_feedback_provenance(tmp_path):
+@pytest.mark.parametrize("variant", ["geometry_v1", "manual_demo_v1"])
+def test_export_preserves_prompt_and_feedback_provenance(tmp_path, variant):
     write_episode(tmp_path, "good")
     path = tmp_path/"good"/"result.json"
     result = json.loads(path.read_text())
-    provenance = {"prompt_variant": "geometry_v1", "system_prompt_sha256": "test-digest",
-                  "feedback_version": "detailed_v1"}
+    provenance = {"prompt_variant": variant, "system_prompt_sha256": "test-digest",
+                  "feedback_version": "detailed_v1" if variant == "geometry_v1" else "basic_v1"}
+    if variant == "manual_demo_v1":
+        provenance["demonstration"] = {"policy": "manual", "split": "train", "seed": 0,
+                                       "content_sha256": "test-demo-digest"}
     result.update(provenance)
     path.write_text(json.dumps(result))
     output = tmp_path/"data.jsonl"

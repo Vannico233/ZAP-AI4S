@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import math
 import os
+from pathlib import Path
 import re
 
 import httpx
@@ -47,6 +49,33 @@ Geometry and execution reminders:
 - A rejected action did not execute. Correct the offending parameter using
   the feedback and workspace bounds instead of repeating the rejected action.
 """}
+
+# A reference demonstration is prompt context, never an executed action or an
+# assistant training target. Its source is a separately verified manual rollout.
+_DEMO_FILE = Path(__file__).resolve().parents[1] / "examples/manual_transport_demo_v1.json"
+_DEMO = json.loads(_DEMO_FILE.read_text(encoding="utf-8"))
+if (_DEMO["format"], _DEMO["policy"], _DEMO["task"], _DEMO["split"], _DEMO["seed"]) != (1, "manual", "transport", "train", 0):
+    raise ValueError("Unexpected source for the manual transport demonstration")
+DEMONSTRATION_METADATA = {
+    "policy": "manual", "task": "transport", "split": "train", "seed": 0,
+    "file": "examples/manual_transport_demo_v1.json",
+    "content_sha256": hashlib.sha256(json.dumps(_DEMO, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+}
+SYSTEM_PROMPTS["manual_demo_v1"] = SYSTEM + """
+Reference: one successful hand-authored TRANSPORT demonstration.
+This is a separate example, NOT actions already executed in your current episode.
+Initial visible state in the example:
+""" + json.dumps(_DEMO["initial_observation"], separators=(",", ":")) + """
+The following lines are the example's nine successive single-action responses:
+""" + "\n".join(json.dumps(action, separators=(",", ":")) for action in _DEMO["actions"]) + """
+End of the reference demonstration.
+Now control the CURRENT episode using its observations and action feedback.
+Use the example's order, but adapt coordinates and yaw to the current tube and tray.
+The gripper starts open. Move to the tube before closing; lift before carrying;
+lower over the tray before opening; withdraw before finishing.
+Your response must contain exactly ONE action, never the whole sequence or an array.
+Every move must include action, xyz AND yaw. No prose or markdown.
+"""
 
 
 def parse_action(text):

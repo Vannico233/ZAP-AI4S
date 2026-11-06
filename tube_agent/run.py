@@ -13,14 +13,17 @@ import time
 import numpy as np
 
 from .env import TubeEnv, SPLIT_OFFSETS
-from .policy import ModelPolicy, ScriptedPolicy, SYSTEM_PROMPTS
+from .policy import ModelPolicy, ScriptedPolicy, SYSTEM_PROMPTS, DEMONSTRATION_METADATA
 
 
 def policy_metadata(args):
     variant = args.prompt_variant if args.policy == "model" else None
-    return {"prompt_variant": variant,
-            "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPTS[variant].encode()).hexdigest() if variant else None,
-            "feedback_version": "detailed_v1" if variant == "geometry_v1" else "basic_v1"}
+    result = {"prompt_variant": variant,
+              "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPTS[variant].encode()).hexdigest() if variant else None,
+              "feedback_version": "detailed_v1" if variant == "geometry_v1" else "basic_v1"}
+    if variant == "manual_demo_v1":
+        result["demonstration"] = dict(DEMONSTRATION_METADATA)
+    return result
 
 
 def summarize(records):
@@ -94,7 +97,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--policy", choices=["scripted", "model"], default="scripted")
     p.add_argument("--prompt-variant", choices=list(SYSTEM_PROMPTS), default="base",
-                   help="geometry_v1 adds geometry guidance and detailed rejection feedback; model policy only")
+                   help="Optional geometry guidance or a manual demonstration in the system prompt; model policy only")
     p.add_argument("--task", choices=["pick", "transport"], default="transport")
     p.add_argument("--split", choices=list(SPLIT_OFFSETS), default="test")
     p.add_argument("--episodes", type=int, default=10, help="Number of distinct scene seeds")
@@ -111,6 +114,8 @@ def main():
     args = p.parse_args()
     if args.policy != "model" and args.prompt_variant != "base":
         p.error("--prompt-variant requires --policy model")
+    if args.prompt_variant == "manual_demo_v1" and args.task != "transport":
+        p.error("manual_demo_v1 is a transport demonstration; use --task transport")
     if min(args.episodes, args.attempts, args.max_steps, args.max_tokens) < 1:
         p.error("episode, attempt, step and token counts must be positive")
     if not 0 <= args.seed_start < args.seed_start + args.episodes <= 100_000:
