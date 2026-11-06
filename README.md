@@ -207,6 +207,20 @@ MUJOCO_GL=osmesa python -m tube_agent.run --policy scripted --task transport --e
 
 如环境已具备有效 EGL 渲染，也可改成 `MUJOCO_GL=egl`。`doctor` 会显示是否能找到 OSMesa。没有图形库时仍可完成全部默认评测和文本状态训练。
 
+### 把已保存的成功轨迹录成视频
+
+在已有可用 OpenGL 渲染的电脑上运行；不需要加载模型或重新采样：
+
+```bash
+python scripts/render_replays.py --data data/base_pick_train_360_success.jsonl --output runs/success_videos
+```
+
+脚本按原场景种子逐条执行保存的模型动作，生成全景/抓取近景双视角 MP4、九宫格合集、
+重放结果 JSON 和 ZIP。原物理与判定不变；报告核对每次动作前观测是否与原记录一致。
+画面使用英文标签，标明重放性质、动作、实际抬升和接触状态；播放时间是仿真时间，
+不包含原推理等待。首尾停留只重复画面，不额外推进物理。
+输出文件已存在时拒绝覆盖。选中成功样本的重放通过率不代表模型重新评测的成功率。
+
 ## 代码位置
 
 | 文件 | 用途 |
