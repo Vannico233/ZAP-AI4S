@@ -21,6 +21,7 @@ case "$STAGE" in
     export CUDA_VISIBLE_DEVICES="${QWEN_GPU:-0}"
     exec "$PY" -m tube_agent.serve --max-context 16384 "$@" ;;
   physics)
+    export MUJOCO_GL=disable
     exec "$PY" -m tube_agent.lab.doctor --physics-only --output "runs/lab_v1/physics_$STAMP" "$@" ;;
   check)
     exec "$PY" -m tube_agent.lab.doctor --services --output "runs/lab_v1/preflight_$STAMP" "$@" ;;

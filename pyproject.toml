@@ -1,3 +1,4 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["requires_render: needs a working OpenGL/EGL renderer; run on the GPU instance"]

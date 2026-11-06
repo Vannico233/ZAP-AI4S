@@ -62,6 +62,10 @@ the user's shared Python 3.11 and includes a mandatory native import check.
 The official SAM source revision is
 `f1647e8d0c1d280991f4d1b7d974c2704537fe66`.
 
+CPU preparation and `physics` explicitly disable OpenGL. Renderer-dependent
+tests are reserved for the GPU instance; `check` there performs the mandatory
+camera/SAM preflight. A CPU instance does not need an EGL display for physics.
+
 ## 2. Obtain SAM 3.1 weights once (no login needed)
 
 If you upload the separately prepared `ZAP-AI4S-sam3.1-weights.tar` and its SHA256

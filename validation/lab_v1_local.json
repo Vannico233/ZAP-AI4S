@@ -16,6 +16,11 @@
       "passed": 23,
       "seconds": 22.9,
       "distinct_test_total": 89
+    },
+    "cpu_graphics_disabled": {
+      "passed": 86,
+      "render_tests_deselected": 3,
+      "seconds": 57.3
     }
   },
   "physics_and_visibility": [
@@ -263,5 +268,15 @@
     "H100 EGL rendering",
     "Full-size SFT/GRPO GPU pilot",
     "Model success rates"
-  ]
+  ],
+  "checkpoint": {
+    "source": "modelscope/facebook/sam3.1",
+    "sha256": "0567debeec80ba4ac6369540c6c248025283cb3ff2b92827509e57e2b3541cb6",
+    "bytes": 3502755717,
+    "full_hash_verified": true,
+    "safe_cpu_read": true,
+    "state_entries": 1623,
+    "tensor_elements": 874365676,
+    "cuda_inference_tested": false
+  }
 }

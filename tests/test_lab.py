@@ -76,6 +76,7 @@ class ImageOnlySegmenter:
         mask=(rgb[:,:,0]>100)&(rgb[:,:,0]>rgb[:,:,1].astype(float)*1.6)&(rgb[:,:,0]>rgb[:,:,2].astype(float)*1.6)
         return [{"query":"red test tube","score":1.,"mask":mask}] if mask.sum()>12 else []
 
+@pytest.mark.requires_render
 def test_observer_contains_no_oracle_geometry_or_judge(tmp_path):
     e=LabEnv("pick");o=Observer(e,ImageOnlySegmenter())
     try:
@@ -88,6 +89,7 @@ def test_observer_contains_no_oracle_geometry_or_judge(tmp_path):
         assert len(list((tmp_path/"frames").glob("*_depth.npy")))==2
     finally:o.close();e.close()
 
+@pytest.mark.requires_render
 def test_visual_rollout_prefix_replays_exact_state_and_context(tmp_path):
     actions=iter([{"action":"move","xyz":[.46,-.18,.20],"rpy":[math.pi,0,0]}, {"action":"finish"}])
     def generate(messages,seed,temperature):return json.dumps(next(actions))
@@ -180,6 +182,7 @@ def test_sam_native_session_contract_and_cleanup():
     with pytest.raises(RuntimeError):segment_snapshot(broken,Image.new("RGB",(12,12)),["tube"],.35)
     assert broken.requests[-1]["type"]=="close_session"
 
+@pytest.mark.requires_render
 def test_visual_http_services_contract(tmp_path):
     from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
     import threading

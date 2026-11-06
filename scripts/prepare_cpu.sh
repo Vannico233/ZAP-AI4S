@@ -80,5 +80,5 @@ fi
 python -m pip check
 python -m pip freeze > .venv-linux/installed-packages.txt
 python -m tube_agent.doctor --model "${TUBE_MODEL_PATH:-/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model}"
-python -m pytest -q
+MUJOCO_GL=disable python -m pytest -q -m 'not requires_render'
 echo 'CPU preparation complete. On the GPU instance: source .venv-linux/bin/activate'

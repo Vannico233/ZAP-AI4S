@@ -10,6 +10,8 @@ preflight in `LAB_GUIDE.md` before collecting model episodes.
   about a missing config file in the randomly initialized tiny-model test.
   After the final search visit-count fix, all 23 lab tests passed again in
   22.90 seconds, including the new ancestor-count regression (89 distinct tests).
+- Graphics-disabled CPU acceptance: **86 passed, 3 renderer tests deselected**,
+  57.30 seconds. The renderer tests passed in the full/targeted runs above.
 - Runtime: Windows, Python 3.13.5, MuJoCo 3.3.7, Torch 2.10.0 CPU,
   Transformers 5.3.0, PEFT 0.18.1. New Python files also parse with Python 3.11
   grammar; Linux shell entry points pass `bash -n`.
@@ -53,6 +55,10 @@ preflight in `LAB_GUIDE.md` before collecting model episodes.
 - ModelScope `facebook/sam3.1` allowed an anonymous HTTP 206 download. The
   pinned 3,502,755,717-byte checkpoint's size/SHA reconstruct the official
   Hugging Face LFS pointer blob `88589b6b0bee708b57010d3ed6f413476e4be255`.
+  The full checkpoint subsequently downloaded and passed SHA256 verification;
+  a safe `torch.load(weights_only=True, mmap=True)` CPU read found 1,623 tensor
+  entries under `detector` and `tracker`, totaling 874,365,676 elements.
+  This is a checkpoint structure check, not a native SAM forward-pass result.
 - SAM offline dependency metadata resolves for Linux/Python 3.11 using 13 new
   wheels, the existing 42-wheel base bundle, and the user's local Torch 2.10.0
   + CUDA 12.8 / torchvision 0.25.0 closure. No new Torch download is needed.
