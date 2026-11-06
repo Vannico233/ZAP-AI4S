@@ -5,6 +5,10 @@ cd "$ROOT"
 PY="$ROOT/.venv-linux/bin/python"
 if [[ ! -x "$PY" ]]; then echo "Missing .venv-linux. Run scripts/prepare_offline.sh first." >&2; exit 1; fi
 export MUJOCO_GL="${TUBE_MUJOCO_GL:-egl}"
+if [[ "$MUJOCO_GL" == egl && -f "$ROOT/.runtime/egl-jammy/EGL_RUNTIME.json" ]]; then
+  "$PY" scripts/check_render.py --verify-runtime
+  export LD_LIBRARY_PATH="$ROOT/.runtime/egl-jammy/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 export HF_HUB_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)_$$"
@@ -25,6 +29,8 @@ case "$STAGE" in
     exec "$PY" -m tube_agent.lab.doctor --physics-only --output "runs/lab_v1/physics_$STAMP" "$@" ;;
   check)
     exec "$PY" -m tube_agent.lab.doctor --services --output "runs/lab_v1/preflight_$STAMP" "$@" ;;
+  render-check)
+    exec "$PY" scripts/check_render.py --output "runs/lab_v1/render_$STAMP" "$@" ;;
   sample|search|eval)
     EXTRA=()
     if [[ "$STAGE" == search ]]; then EXTRA+=(--search); ATTEMPTS=32; SPLIT=train
@@ -46,7 +52,7 @@ case "$STAGE" in
   replay)
     exec "$PY" -m tube_agent.lab.replay "$@" ;;
   *)
-    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|check|sample|search|export|sft|grpo|eval|replay} [options]"
+    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|render-check|check|sample|search|export|sft|grpo|eval|replay} [options]"
     echo "sam: GPU 1; model: GPU 0; sft/grpo: GPU 2. Override SAM_GPU, QWEN_GPU, TRAIN_GPU."
     echo "First run physics, then start sam + model in separate terminals, then check."
     [[ "$STAGE" == help ]] || exit 1 ;;

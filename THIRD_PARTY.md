@@ -42,3 +42,14 @@ perception scheduling and optimizer scale; it does not reproduce published score
   Weights are not tracked in Git.
 - Uses fresh single-frame native predictor sessions. This is synchronous visual
   detection at action boundaries, not a reproduction of asynchronous tracking.
+
+## Optional Ubuntu EGL loader runtime
+
+- Ubuntu 22.04 amd64 packages `libegl1`, `libopengl0`, `libglvnd0`, version 1.4.0-1.
+- Source: https://packages.ubuntu.com/jammy/libegl1 and
+  https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/ .
+- The optional offline patch extracts three unmodified shared-library binaries
+  into `.runtime/egl-jammy/lib`; upstream copyright/license files and package
+  download SHA256 records are retained alongside them.
+- The patch contains no NVIDIA driver, replaces no system files and requires
+  the host's existing NVIDIA EGL vendor implementation.

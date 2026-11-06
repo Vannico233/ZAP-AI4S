@@ -146,6 +146,25 @@ bad weight load or model error must be resolved here. `MUJOCO_GL=egl` is selecte
 by the wrapper; `TUBE_MUJOCO_GL` can explicitly select an installed alternative.
 Do not install OSMesa or change drivers preemptively.
 
+If `libEGL.so.1` is missing but `libEGL_nvidia.so.0` loads and the NVIDIA vendor
+JSON exists, use the separate `ZAP-AI4S-egl-jammy-patch.tar.gz` for this Ubuntu
+22.04 x86_64 server. It adds verified Ubuntu libglvnd 1.4.0-1 EGL/OpenGL/dispatch
+libraries under `.runtime/egl-jammy`, including licenses and source hashes.
+`lab.sh` validates these files and prepends their directory to `LD_LIBRARY_PATH`
+before starting Python. It does not install system packages or NVIDIA drivers.
+It requires glibc >= 2.34 and an already-working NVIDIA EGL vendor library.
+
+After extracting the patch over the existing offline project, run:
+
+```bash
+bash scripts/lab.sh render-check &&
+bash scripts/lab.sh check &&
+bash scripts/lab.sh sample
+```
+
+`render-check` does not contact SAM or Qwen. It saves both camera PNGs and the GL
+vendor/renderer/version in `runs/lab_v1/render_*`. Keep services A/B running.
+
 ## 4. Fixed-scene baseline: 4 tasks x 8 attempts = 32 trials
 
 ```bash

@@ -1,0 +1,29 @@
+[
+  {
+    "package": "libegl1",
+    "version": "1.4.0-1",
+    "architecture": "amd64",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/libegl1_1.4.0-1_amd64.deb",
+    "metadata": "https://packages.ubuntu.com/jammy/amd64/libegl1/download",
+    "sha256": "4a35c0e925e15a076e7ce11d7c76f8ecb16615fc347c2c09afa4c205a7ca8ec4",
+    "bytes": 28564
+  },
+  {
+    "package": "libopengl0",
+    "version": "1.4.0-1",
+    "architecture": "amd64",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/libopengl0_1.4.0-1_amd64.deb",
+    "metadata": "https://packages.ubuntu.com/jammy/amd64/libopengl0/download",
+    "sha256": "486473b82c475d8137d2a061adb22fbcd1d681936e9d85a3ca7f8b4b83e2ccde",
+    "bytes": 36450
+  },
+  {
+    "package": "libglvnd0",
+    "version": "1.4.0-1",
+    "architecture": "amd64",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/libglvnd0_1.4.0-1_amd64.deb",
+    "metadata": "https://packages.ubuntu.com/jammy/amd64/libglvnd0/download",
+    "sha256": "6956d8be93b160b439a043141a061adfd54561d877423a956ace84d2fb3bfb4e",
+    "bytes": 73582
+  }
+]

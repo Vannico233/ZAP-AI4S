@@ -1,5 +1,19 @@
 # Lab v1 validation - 2026-11-06
 
+## EGL loader repair for the target Ubuntu 22.04 instance
+
+The user's server diagnostics found that `libEGL_nvidia.so.0` and
+`libGLdispatch.so.0` load, NVIDIA's EGL vendor JSON exists, and glibc is 2.35,
+but `libEGL.so.1` is absent. The optional EGL patch supplies Ubuntu Jammy amd64
+libglvnd 1.4.0-1 client libraries in a private project directory. Three upstream
+DEB hashes were verified against packages.ubuntu.com; extracted ELF binaries
+were checked as x86_64 and have a maximum GLIBC requirement of 2.34.
+
+The new `render-check` CLI rendered both 640x480 cameras locally on Windows
+(NVIDIA RTX 4060 Laptop GPU), and shell syntax / private-file checks passed.
+This does **not** validate those Linux binaries on the remote H100. Run
+`bash scripts/lab.sh render-check` there before the normal service preflight.
+
 These are local software/physics checks, not Qwen3.5-4B task scores. Structured
 results are retained in `validation/lab_v1_local.json`. Run the mandatory server
 preflight in `LAB_GUIDE.md` before collecting model episodes.
