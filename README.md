@@ -3,7 +3,7 @@
 用 **Qwen3.5-4B → 简单 JSON 动作 → MuJoCo Panda 机械臂**，完成两个实验室基础操作。
 核心只有仿真、模型接口、运行记录和自采成功轨迹微调；不依赖 Open-RUA 的服务调度、MCP、SAM、动作模型或多机器人框架。
 
-本地 Python 3.13.5 已通过 34 项测试；规则策略的常规拿起、搬运检查均为 20/20。
+本地 Python 3.13.5 已通过 37 项测试；规则策略的常规拿起、搬运检查均为 20/20。
 这些不是 Qwen 的成绩，完整验证范围和示例视频见 [VALIDATION.md](VALIDATION.md)。
 
 ## 当前实现范围
@@ -37,7 +37,16 @@ bash scripts/prepare_cpu.sh
 
 虚拟环境仍依赖基础 Python 的文件，因此**基础解释器和项目都必须在 CPU/GPU 共享挂载中**，且两端绝对路径相同。用户确认的基础解释器是 `DiG/.runtime/py311`；GPU 实验完成前请保留该目录。脚本会检查基础解释器和项目是否都位于共享根目录下，默认共享根目录为项目的父目录（这里是 `wangningchong`）；其他布局可设置 `TUBE_SHARED_ROOT`。这个路径检查不能替代 GPU 上的实际启动检查。
 
-普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。CPU 实例仍需访问这两个包下载站；脚本设置了下载重试和超时。如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple`；PyTorch 源可用 `TUBE_TORCH_INDEX_URL` 指定，但必须提供 CUDA 12.8 对应的软件包。
+普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。CPU 实例仍需访问这两个包下载站。脚本直接使用现有 pip，不强制升级；依赖下载出现哈希不符、超时或连接中断时最多尝试三轮，后两轮绕过 pip 缓存重新下载，保留 HTTPS 和哈希校验。版本不存在等非下载错误会立即停止。完整输出保存在 `.bootstrap-linux/pip-torch.log` 和 `.bootstrap-linux/pip-packages.log`。
+
+如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple`；PyTorch 源可用 `TUBE_TORCH_INDEX_URL` 指定，但必须提供 CUDA 12.8 对应的软件包。重新下载不能保证修复持续的网络问题；pip 24 的这种重试不是大文件断点续传。
+
+旧版若在升级 pip 时出现 `THESE PACKAGES DO NOT MATCH THE HASHES`，无需修改哈希或删除环境，更新后重跑即可：
+
+```bash
+git pull --ff-only
+bash scripts/prepare_cpu.sh
+```
 
 如果旧版脚本安装或下载 uv 失败（包括 `No matching distribution found`、`SSL_read ... unexpected eof`），更新后直接使用现成解释器，无需删除旧的 `.bootstrap-linux`：
 

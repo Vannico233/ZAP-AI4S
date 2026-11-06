@@ -46,9 +46,11 @@ if ! python -m pip --version >/dev/null 2>&1; then
 fi
 echo "Python package index: $PYPI_INDEX"
 echo "PyTorch CUDA 12.8 index: $TORCH_INDEX"
-python -m pip install --upgrade pip --index-url "$PYPI_INDEX" --retries 5 --timeout 60
-python -m pip install torch==2.10.0 torchvision==0.25.0 --index-url "$TORCH_INDEX" --retries 5 --timeout 60
-python -m pip install -r requirements.txt -r requirements-model.txt 'pytest>=8' --index-url "$PYPI_INDEX" --retries 5 --timeout 60
+# The existing pip is sufficient; upgrading it must not block preparation.
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+python -m pip --version
+python scripts/install_packages.py torch --index-url "$TORCH_INDEX"
+python scripts/install_packages.py packages --index-url "$PYPI_INDEX"
 python -m pip check
 python -m pip freeze > .venv-linux/installed-packages.txt
 python -m tube_agent.doctor --model "${TUBE_MODEL_PATH:-/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model}"
