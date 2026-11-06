@@ -8,7 +8,7 @@ import pytest
 from tube_agent.env import TubeEnv
 from tube_agent.export_sft import export
 from tube_agent.model_utils import resolve_model
-from tube_agent.policy import ModelPolicy, ScriptedPolicy, parse_action
+from tube_agent.policy import ModelPolicy, ScriptedPolicy, SYSTEM_PROMPTS, parse_action
 from tube_agent.train_sft import make_examples
 from tube_agent.serve import convert_messages
 
@@ -21,7 +21,8 @@ def test_processor_receives_typed_content_even_in_text_mode():
     assert original[0]["content"] == "rules"
 
 
-def test_model_http_loop_uses_real_physics():
+@pytest.mark.parametrize("prompt_variant", ["base", "geometry_v1"])
+def test_model_http_loop_uses_real_physics(prompt_variant):
     controller = ScriptedPolicy("transport")
     received = []
     class Handler(BaseHTTPRequestHandler):
@@ -40,8 +41,8 @@ def test_model_http_loop_uses_real_physics():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    env = TubeEnv()
-    policy = ModelPolicy(f"http://127.0.0.1:{server.server_port}/v1", "test")
+    env = TubeEnv(detailed_feedback=prompt_variant == "geometry_v1")
+    policy = ModelPolicy(f"http://127.0.0.1:{server.server_port}/v1", "test", prompt_variant=prompt_variant)
     try:
         observation, feedback = env.observe(), None
         while not env.ended:
@@ -51,6 +52,7 @@ def test_model_http_loop_uses_real_physics():
         assert len(received) == 9
         assert len(policy.history) == 19
         assert received[0]["chat_template_kwargs"] == {"enable_thinking": False}
+        assert received[0]["messages"][0]["content"] == SYSTEM_PROMPTS[prompt_variant]
     finally:
         policy.close()
         env.close()
@@ -103,6 +105,20 @@ def test_empty_export_does_not_create_data(tmp_path):
     with pytest.raises(ValueError):
         export(tmp_path, tmp_path/"data.jsonl")
     assert not (tmp_path/"data.jsonl").exists()
+
+
+def test_export_preserves_prompt_and_feedback_provenance(tmp_path):
+    write_episode(tmp_path, "good")
+    path = tmp_path/"good"/"result.json"
+    result = json.loads(path.read_text())
+    provenance = {"prompt_variant": "geometry_v1", "system_prompt_sha256": "test-digest",
+                  "feedback_version": "detailed_v1"}
+    result.update(provenance)
+    path.write_text(json.dumps(result))
+    output = tmp_path/"data.jsonl"
+    export(tmp_path, output)
+    source = json.loads(output.read_text())["source"]
+    assert all(source[key] == value for key, value in provenance.items())
 
 
 @pytest.mark.parametrize("as_dict", [False, True])

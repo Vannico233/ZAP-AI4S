@@ -27,8 +27,12 @@ def export(source, output):
             counts["duplicates"] += 1
             continue
         seen.add(digest)
-        samples.append({"messages": messages, "source": {k: result[k] for k in
-                       ("task", "split", "seed", "attempt", "policy", "model", "observation_mode")}})
+        source_info = {k: result[k] for k in
+                       ("task", "split", "seed", "attempt", "policy", "model", "observation_mode")}
+        # Older rollouts do not have version fields; never invent their provenance.
+        source_info.update({k: result[k] for k in
+                           ("prompt_variant", "system_prompt_sha256", "feedback_version") if k in result})
+        samples.append({"messages": messages, "source": source_info})
     counts["exported_episodes"] = len(samples)
     if not samples:
         raise ValueError(f"No eligible self-generated successes; no file written. Counts: {dict(counts)}")

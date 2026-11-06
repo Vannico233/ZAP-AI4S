@@ -64,6 +64,35 @@ def test_invalid_actions_cannot_mutate_physics(action):
         env.close()
 
 
+@pytest.mark.parametrize("detailed_feedback", [False, True])
+@pytest.mark.parametrize("xyz,yaw,details", [
+    ([.45, .22, .004], 0., ["z=0.004", "[0.009, 0.5] metres"]),
+    ([.45, .22, .2], 3.2, ["yaw=3.2", f"[{-math.pi}, {math.pi}] radians"]),
+    ([.7, -.5, .004], -3.2, ["x=0.7", "[0.2, 0.65] metres",
+                            "y=-0.5", "[-0.4, 0.4] metres",
+                            "z=0.004", "[0.009, 0.5] metres", "yaw=-3.2"]),
+])
+def test_workspace_rejection_reports_bounds_without_moving(detailed_feedback, xyz, yaw, details):
+    env = TubeEnv(detailed_feedback=detailed_feedback)
+    try:
+        before = [env.data.qpos.copy(), env.data.qvel.copy(), env.data.ctrl.copy()]
+        before_time = env.data.time
+        _, feedback, ended = env.step({"action": "move", "xyz": xyz, "yaw": yaw})
+        assert not feedback["accepted"] and not ended
+        assert env.steps == 1 and env.invalid_actions == 1
+        for old, current in zip(before, [env.data.qpos, env.data.qvel, env.data.ctrl]):
+            assert np.array_equal(old, current)
+        assert env.data.time == before_time
+        assert feedback["reason"].isascii()
+        if detailed_feedback:
+            for detail in details:
+                assert detail in feedback["reason"]
+        else:
+            assert feedback["reason"] == "Pose outside workspace or yaw outside [-pi, pi]"
+    finally:
+        env.close()
+
+
 def test_holding_over_tray_is_not_transport_success():
     env = TubeEnv(task="transport")
     try:

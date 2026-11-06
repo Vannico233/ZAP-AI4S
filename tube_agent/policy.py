@@ -30,6 +30,24 @@ they are not results of a learned perception model. Use feedback after each acti
 Budget: at most 20 actions unless steps_left says otherwise. Submit finish when done.
 """
 
+# Opt-in prompt assistance, kept separate from the original baseline.
+SYSTEM_PROMPTS = {"base": SYSTEM, "geometry_v1": SYSTEM + """
+Geometry and execution reminders:
+- move.xyz is a TCP target, not an object center or a support surface point.
+  tray_center gives the center of the tray's TOP SUPPORT SURFACE. Its z is not
+  a placement target for the TCP. Account for the tube's radius, orientation
+  and the observed offset between its center and the TCP when placing it.
+- Workspace limits apply to commanded TCP coordinates. A scene surface may lie
+  below the minimum allowed TCP z. Do not copy such a point into move.xyz.
+- Motions have tracking error and a grasp can settle. For a required minimum
+  lift, aim above the minimum with a margin and check the observed object pose.
+  reached=true only describes motion tolerance; it does not mean task success.
+- For transport, lift the tube clear of the support before moving sideways;
+  lower it at the destination, release it, and withdraw the gripper.
+- A rejected action did not execute. Correct the offending parameter using
+  the feedback and workspace bounds instead of repeating the rejected action.
+"""}
+
 
 def parse_action(text):
     # Some compatible providers still emit a think section or fenced JSON.
@@ -75,11 +93,12 @@ class ScriptedPolicy:
 
 
 class ModelPolicy:
-    def __init__(self, base_url, model, temperature=0., seed=0, max_tokens=192, vision=False):
+    def __init__(self, base_url, model, temperature=0., seed=0, max_tokens=192, vision=False,
+                 prompt_variant="base"):
         self.base_url, self.model = base_url.rstrip("/"), model
         self.temperature, self.seed, self.max_tokens = temperature, seed, max_tokens
         self.vision = vision
-        self.history = [{"role": "system", "content": SYSTEM}]
+        self.history = [{"role": "system", "content": SYSTEM_PROMPTS[prompt_variant]}]
         key = os.environ.get("TUBE_API_KEY", "local")
         self.client = httpx.Client(timeout=180., trust_env=False,
                                    headers={"Authorization": f"Bearer {key}"})

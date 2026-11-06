@@ -126,6 +126,27 @@ python -m tube_agent.run --policy model --task transport --split test --episodes
 
 这是明早最先需要的原模型基线。默认温度 0、每任务最多 20 个动作、每次生成最多 192 token，关闭长思考。模型没有一键抓取工具，必须自己决定位置、朝向、夹爪开合和顺序。执行反馈不暴露成功判定或奖励。
 
+### 几何提示与反馈修订实验
+
+首轮服务器基线中，拿起任务目标恰好增加 6 cm，实际跟踪误差使物体抬升不足；
+搬运任务出现直接把托盘表面高度当作 TCP 高度、反复请求越界位置的情况。
+`--prompt-variant geometry_v1` 是可选的人工提示增强：说明 TCP/物体/支撑面的区别、
+执行误差裕度和先抬升再搬运，并让越界反馈指出具体字段和边界。
+动作仍由模型产生，越界仍拒绝，不自动修正坐标；物理、动作预算、奖励和成功标准不变。
+默认 `base` 保留原提示与原通用拒绝反馈。此实验尚未经完整 Qwen 权重验证，不能称为训练收益。
+
+模型服务已启动时，先在验证集各做 5 次，输出与原基线分开保存：
+
+```bash
+python -m tube_agent.run --policy model --prompt-variant geometry_v1 --task pick --split validation --episodes 5 --output runs/geometry_v1
+python -m tube_agent.run --policy model --prompt-variant geometry_v1 --task transport --split validation --episodes 5 --output runs/geometry_v1
+```
+
+此选项同时改变提示与拒绝反馈，应将结果称为“几何提示与反馈修订后的基线”。
+`config.json`、每轮 `result.json` 和导出训练数据会记录提示版本、提示 SHA256 和反馈版本。
+旧结果保留；后续正式比较用尚未查看的测试种子，例如两种方法都使用 `--seed-start 20 --episodes 20`。
+若随后采集训练数据或评测微调模型，需明确使用同一个提示版本，避免把提示变化误算为训练收益。
+
 ## 4. 自采成功轨迹，再微调
 
 在模型服务仍运行时采样训练场景；每个场景尝试 8 次：

@@ -26,13 +26,14 @@ def down_rotation(yaw):
 
 class TubeEnv:
     def __init__(self, task="transport", split="train", seed=0, max_steps=20,
-                 frame_callback: Optional[Callable] = None):
+                 frame_callback: Optional[Callable] = None, detailed_feedback=False):
         if task not in ("pick", "transport") or split not in SPLIT_OFFSETS:
             raise ValueError("Unknown task or split")
         if not 0 <= seed < 100_000 or max_steps < 1:
             raise ValueError("seed must be in [0, 100000); max_steps must be positive")
         self.task, self.split, self.seed = task, split, seed
         self.max_steps, self.steps = max_steps, 0
+        self.detailed_feedback = detailed_feedback
         self.rng = np.random.default_rng(SPLIT_OFFSETS[split] + seed)
         self.renderer = None
         self.frame_callback = frame_callback
@@ -241,6 +242,16 @@ class TubeEnv:
                 if xyz.shape != (3,) or not np.all(np.isfinite(xyz)) or not math.isfinite(yaw):
                     raise ValueError("Pose must be finite, xyz must contain three numbers")
                 if np.any(xyz < [.20, -.40, .009]) or np.any(xyz > [.65, .40, .50]) or abs(yaw) > math.pi:
+                    if self.detailed_feedback:
+                        violations = [
+                            f"{axis}={value:g} outside [{lower:g}, {upper:g}] metres"
+                            for axis, value, lower, upper in zip(
+                                "xyz", xyz, [.20, -.40, .009], [.65, .40, .50])
+                            if value < lower or value > upper
+                        ]
+                        if abs(yaw) > math.pi:
+                            violations.append(f"yaw={yaw:g} outside [{-math.pi}, {math.pi}] radians")
+                        raise ValueError("Invalid move TCP pose: " + "; ".join(violations))
                     raise ValueError("Pose outside workspace or yaw outside [-pi, pi]")
                 feedback = self._move(xyz, yaw)
             elif kind == "gripper":

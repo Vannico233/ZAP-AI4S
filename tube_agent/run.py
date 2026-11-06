@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import importlib.metadata
 import json
 import math
@@ -12,7 +13,14 @@ import time
 import numpy as np
 
 from .env import TubeEnv, SPLIT_OFFSETS
-from .policy import ModelPolicy, ScriptedPolicy
+from .policy import ModelPolicy, ScriptedPolicy, SYSTEM_PROMPTS
+
+
+def policy_metadata(args):
+    variant = args.prompt_variant if args.policy == "model" else None
+    return {"prompt_variant": variant,
+            "system_prompt_sha256": hashlib.sha256(SYSTEM_PROMPTS[variant].encode()).hexdigest() if variant else None,
+            "feedback_version": "detailed_v1" if variant == "geometry_v1" else "basic_v1"}
 
 
 def summarize(records):
@@ -42,9 +50,11 @@ def run_episode(args, seed, attempt, directory):
         writer = imageio.get_writer(str(directory/"episode.mp4"), fps=12.5, codec="libx264", quality=7)
     try:
         env = TubeEnv(args.task, args.split, seed, args.max_steps,
-                      frame_callback=writer.append_data if writer else None)
+                      frame_callback=writer.append_data if writer else None,
+                      detailed_feedback=args.prompt_variant == "geometry_v1")
         policy = (ScriptedPolicy(args.task) if args.policy == "scripted" else
-                  ModelPolicy(args.base_url, args.model, args.temperature, seed*1009+attempt, args.max_tokens, args.vision))
+                  ModelPolicy(args.base_url, args.model, args.temperature, seed*1009+attempt,
+                              args.max_tokens, args.vision, args.prompt_variant))
         observation, feedback = env.observe(), None
         with (directory/"trajectory.jsonl").open("w", encoding="utf-8") as log:
             while not env.ended:
@@ -70,6 +80,7 @@ def run_episode(args, seed, attempt, directory):
             env.close()
         if writer:
             writer.close()
+    result.update(policy_metadata(args))
     result.update({"task": args.task, "split": args.split, "seed": seed, "attempt": attempt,
                    "policy": args.policy, "model": args.model if args.policy == "model" else None,
                    "observation_mode": "rgb_plus_oracle_state" if args.vision else "oracle_object_state",
@@ -82,6 +93,8 @@ def run_episode(args, seed, attempt, directory):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--policy", choices=["scripted", "model"], default="scripted")
+    p.add_argument("--prompt-variant", choices=list(SYSTEM_PROMPTS), default="base",
+                   help="geometry_v1 adds geometry guidance and detailed rejection feedback; model policy only")
     p.add_argument("--task", choices=["pick", "transport"], default="transport")
     p.add_argument("--split", choices=list(SPLIT_OFFSETS), default="test")
     p.add_argument("--episodes", type=int, default=10, help="Number of distinct scene seeds")
@@ -96,6 +109,8 @@ def main():
     p.add_argument("--video", action="store_true", help="Requires EGL or OSMesa on headless Linux")
     p.add_argument("--output", type=Path, default=Path("runs"))
     args = p.parse_args()
+    if args.policy != "model" and args.prompt_variant != "base":
+        p.error("--prompt-variant requires --policy model")
     if min(args.episodes, args.attempts, args.max_steps, args.max_tokens) < 1:
         p.error("episode, attempt, step and token counts must be positive")
     if not 0 <= args.seed_start < args.seed_start + args.episodes <= 100_000:
@@ -106,6 +121,7 @@ def main():
     directory = args.output/f"{stamp}_{args.policy}_{args.task}_{args.split}"
     directory.mkdir(parents=True, exist_ok=False)
     config = {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()}
+    config.update(policy_metadata(args))
     # Do not persist any endpoint credentials or query parameters.
     from urllib.parse import urlsplit, urlunsplit
     u = urlsplit(config["base_url"])
