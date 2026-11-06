@@ -1,5 +1,21 @@
 # Lab v1 validation - 2026-11-06
 
+## SAM 3.1 session API compatibility repair
+
+The server passed H100 EGL rendering and all five scripted physical/visibility
+checks. Its first SAM request then exposed a mismatch in the pinned upstream
+API: `Sam3BasePredictor.start_session` always passes `offload_state_to_cpu`,
+while `Sam3MultiplexTrackingWithInteractivity.init_state` does not accept it.
+The application adapter consumes only the unsupported false/default flag;
+true CPU-offload requests and unrelated unknown arguments still fail explicitly.
+SAM health exposes `session_init_compat`. Upstream wheel files are unchanged.
+
+The unmodified upstream base predictor reproduced the TypeError locally, then
+passed start/prompt/close dispatch with the adapter and stub inference. All 25
+lab tests passed in 19.66 seconds. This verifies the API repair, not native GPU
+segmentation. The client now preserves the service's error text, the SAM server
+prints the traceback, and raw RGB-D is saved before a segmentation request.
+
 ## EGL loader repair for the target Ubuntu 22.04 instance
 
 The user's server diagnostics found that `libEGL_nvidia.so.0` and

@@ -182,6 +182,39 @@ def test_sam_native_session_contract_and_cleanup():
     with pytest.raises(RuntimeError):segment_snapshot(broken,Image.new("RGB",(12,12)),["tube"],.35)
     assert broken.requests[-1]["type"]=="close_session"
 
+
+def test_sam31_init_adapter_only_consumes_unsupported_false_flag():
+    from types import SimpleNamespace
+    from tube_agent.lab.sam_server import adapt_session_init
+    class Multiplex:
+        def init_state(self,resource_path,offload_video_to_cpu=False,async_loading_frames=False):
+            return resource_path,offload_video_to_cpu,async_loading_frames
+    predictor=SimpleNamespace(model=Multiplex())
+    with pytest.raises(TypeError,match="offload_state_to_cpu"):
+        predictor.model.init_state(["image"],offload_state_to_cpu=False)
+    assert adapt_session_init(predictor)
+    assert predictor.model.init_state(["image"],offload_state_to_cpu=False,async_loading_frames=True)==(["image"],False,True)
+    assert adapt_session_init(predictor)
+    with pytest.raises(ValueError,match="CPU state offloading"):
+        predictor.model.init_state(["image"],offload_state_to_cpu=True)
+    with pytest.raises(TypeError):predictor.model.init_state(["image"],unknown_flag=False)
+    class Supported:
+        def init_state(self,resource_path,offload_state_to_cpu=False):return offload_state_to_cpu
+    native=SimpleNamespace(model=Supported());assert not adapt_session_init(native)
+    assert native.model.init_state(["image"],offload_state_to_cpu=True)
+
+
+def test_sam_client_preserves_remote_error_body():
+    import httpx
+    from tube_agent.lab.vision import SamClient
+    client=SamClient();client.client.close()
+    client.client=httpx.Client(transport=httpx.MockTransport(lambda request:
+        httpx.Response(400,json={"error":"TypeError: unexpected keyword argument 'offload_state_to_cpu'"})))
+    try:
+        with pytest.raises(RuntimeError,match="offload_state_to_cpu"):
+            client.segment(np.zeros((12,12,3),dtype=np.uint8),["red tube"])
+    finally:client.close()
+
 @pytest.mark.requires_render
 def test_visual_http_services_contract(tmp_path):
     from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer

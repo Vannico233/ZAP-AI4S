@@ -90,7 +90,10 @@ class SamClient:
         return h
     def segment(self,rgb,queries):
         r=self.client.post(self.url+"/segment",json={"image":image_url(rgb),"queries":queries})
-        r.raise_for_status()
+        if not r.is_success:
+            try:detail=r.json().get("error",r.text)
+            except (ValueError,AttributeError):detail=r.text
+            raise RuntimeError(f"SAM /segment HTTP {r.status_code}: {str(detail)[:6000]}")
         return [{**d,"mask":decode_mask(d["mask"])} for d in r.json()["detections"]]
     def close(self):self.client.close()
 
@@ -106,6 +109,11 @@ class Observer:
         if output: Path(output).mkdir(parents=True,exist_ok=False)
         for frame in frames:
             c=frame["calibration"];name=c["name"]
+            if output:
+                directory=Path(output)
+                Image.fromarray(frame["rgb"]).save(directory/f"{name}_rgb.png")
+                np.save(directory/f"{name}_depth.npy",frame["depth"],allow_pickle=False)
+                (directory/f"{name}_calibration.json").write_text(json.dumps(c,indent=2),encoding="utf-8")
             detections=self.segmenter.segment(frame["rgb"],self.queries)
             overlay=Image.fromarray(frame["rgb"]);draw=ImageDraw.Draw(overlay)
             serial=[]
@@ -127,10 +135,7 @@ class Observer:
             images.append(np.array(overlay))
             if output:
                 directory=Path(output)
-                Image.fromarray(frame["rgb"]).save(directory/f"{name}_rgb.png")
                 overlay.save(directory/f"{name}_annotated.png")
-                np.save(directory/f"{name}_depth.npy",frame["depth"],allow_pickle=False)
-                (directory/f"{name}_calibration.json").write_text(json.dumps(c,indent=2),encoding="utf-8")
                 (directory/f"{name}_masks.json").write_text(json.dumps(serial),encoding="utf-8")
         return {"observation_mode":"rgbd_sam3.1_detector","units":"metres and radians",
                 **self.env.proprioception(),"queries":self.queries,"detections":objects,

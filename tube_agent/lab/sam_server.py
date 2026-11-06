@@ -9,6 +9,34 @@ from http.server import BaseHTTPRequestHandler,HTTPServer
 import json
 import os
 from pathlib import Path
+import inspect
+import traceback
+
+
+def adapt_session_init(predictor):
+    """Bridge the pinned base predictor's extra flag to SAM 3.1's init API.
+
+    The native base always sends offload_state_to_cpu=False, but the multiplex
+    model does not accept that argument. Drop only this unsupported false flag;
+    never silently ignore a requested CPU offload or another unknown argument.
+    """
+    original = predictor.model.init_state
+    if getattr(original, "_lab_init_compat", False):
+        return True
+    parameters = inspect.signature(original).parameters
+    if "offload_state_to_cpu" in parameters or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+    ):
+        return False
+
+    def compatible_init(*args, offload_state_to_cpu=False, **kwargs):
+        if offload_state_to_cpu:
+            raise ValueError("This SAM 3.1 model does not support CPU state offloading")
+        return original(*args, **kwargs)
+
+    compatible_init._lab_init_compat = True
+    predictor.model.init_state = compatible_init
+    return True
 
 def segment_snapshot(predictor,image,queries,threshold):
     """Official request schema, one fresh single-frame session per text query."""
@@ -56,9 +84,10 @@ def main():
     predictor.model.load_state_dict(state,strict=True)
     del checkpoint,state
     predictor.model.eval()
+    session_compat=adapt_session_init(predictor)
     health={"ready":True,"backend":"sam3.1_detector","checkpoint_sha256":digest.hexdigest(),
             "checkpoint_revision":manifest.get("revision"),"checkpoint_source":manifest.get("source","huggingface"),
-            "temporal_tracking":False,"threshold":a.threshold}
+            "temporal_tracking":False,"threshold":a.threshold,"session_init_compat":session_compat}
     class Handler(BaseHTTPRequestHandler):
         def reply(self,status,body):
             payload=json.dumps(body).encode()
@@ -79,7 +108,9 @@ def main():
                 with torch.inference_mode(),torch.autocast("cuda",dtype=torch.bfloat16):
                     detections=segment_snapshot(predictor,img,queries,a.threshold)
                 self.reply(200,{"detections":detections})
-            except Exception as exc:self.reply(400,{"error":f"{type(exc).__name__}: {exc}"})
+            except Exception as exc:
+                traceback.print_exc()
+                self.reply(400,{"error":f"{type(exc).__name__}: {exc}"})
     server=HTTPServer(("127.0.0.1",a.port),Handler)
     print(json.dumps(health),flush=True);print(f"Ready: http://127.0.0.1:{a.port}",flush=True)
     try:server.serve_forever()

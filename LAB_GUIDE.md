@@ -165,6 +165,14 @@ bash scripts/lab.sh sample
 `render-check` does not contact SAM or Qwen. It saves both camera PNGs and the GL
 vendor/renderer/version in `runs/lab_v1/render_*`. Keep services A/B running.
 
+For the pinned SAM source, the application applies a narrow runtime adapter for
+the unsupported `offload_state_to_cpu=False` session argument. When upgrading
+with `ZAP-AI4S-sam-session-fix.tar.gz`, restart Terminal A after extraction and
+wait for `Ready`; its health JSON should include `session_init_compat: true`.
+Terminal B does not need restarting. No checkpoint or dependency download is
+required. Future SAM errors include their actual message in Terminal C and the
+full traceback in Terminal A.
+
 ## 4. Fixed-scene baseline: 4 tasks x 8 attempts = 32 trials
 
 ```bash
