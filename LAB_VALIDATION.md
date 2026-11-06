@@ -1,4 +1,41 @@
-# Lab v1 validation - 2026-11-06
+# Lab validation - 2026-11-07
+
+## Four-GPU automatic experiment release
+
+Full local regression: **118 passed, 1 skipped** in 87.78 seconds. The skipped
+test is a real three-process Gloo reduction: this Windows Torch build reports
+`unsupported gloo device`, including with explicit UV transport. No local NCCL
+or real four-H100 training result is claimed. The production pipeline instead
+requires a real three-rank NCCL + SAM + Qwen visual generation/backward/optimizer
+smoke check on the user's GPU instance before spending the mining budget.
+
+The targeted follow-up checkpoint/phase tests also passed (3 tests). On a random
+tiny Qwen3.5 multimodal model, checkpointed SFT and GRPO backward work; saving
+LoRA and AdamW state, restoring both, and taking the next update matches the
+uninterrupted model's response log probabilities within 1e-6. This uses tiny
+random weights and synthetic pixels, not evidence of a 4B task success.
+
+Additional coverage includes: gradient sums with unequal per-rank work and one
+empty-gradient rank; all-zero-gradient groups; model-only data provenance;
+excluding held-out/test/assisted/invalid/interrupted traces; resumable search
+without regenerating complete episodes; distinct-success counting; complete
+stage sequencing with and without SFT-eligible samples; validation-only model
+selection; and never inventing a success video when no success exists. Existing
+physical/camera/SAM contract, HTTP and legacy tests remain passing. Shell syntax
+and Python compilation checks passed. The PEFT warning about no original model
+config occurs in the random tiny-model tests, whose base has no model directory.
+
+Review fixes include atomic episode result writes, bounded shared-prefix storage,
+explicit action protocol provenance, preserving historical replay, and keeping
+EGL device selection independent of CUDA local ranks. Default limits are 559
+model episodes before interrupted retries, with early stops for successful
+searches. Scripted feasibility tests and smoke-test actions are excluded from
+the SFT data source directories. The existing dependency/weight bundle is reused.
+
+Remaining server-only evidence: real Qwen3.5-4B/NCCL training, convergence on all
+four primitives, held-out composition success and success videos from those
+actual model runs. The launcher records failures and can resume; it cannot
+guarantee convergence or turn a failed model rollout into a success.
 
 ## Audit of the first four real visual-policy trajectories
 

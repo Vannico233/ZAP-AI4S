@@ -127,7 +127,7 @@ def test_export_refuses_manual_or_held_out_or_assisted_successes(tmp_path):
     with pytest.raises(ValueError,match="No eligible"):export(tmp_path,tmp_path/"sft.jsonl")
     assert not (tmp_path/"sft.jsonl").exists()
 
-def test_qwen_vision_lora_sft_and_grpo_backward():
+def test_qwen_vision_lora_sft_and_grpo_backward(tmp_path):
     torch=pytest.importorskip("torch")
     from transformers import Qwen3_5ForConditionalGeneration
     from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config
@@ -144,6 +144,7 @@ def test_qwen_vision_lora_sft_and_grpo_backward():
                        "num_position_embeddings":16,"patch_size":14,"spatial_merge_size":2,"temporal_patch_size":2},
         image_token_id=253,video_token_id=254,vision_start_token_id=252,vision_end_token_id=251)
     base=Qwen3_5ForConditionalGeneration(config)
+    original_state={k:v.detach().clone() for k,v in base.state_dict().items()}
     targets=[n for n,m in base.named_modules() if isinstance(m,torch.nn.Linear) and ".language_model." in n]
     model=get_peft_model(base,LoraConfig(r=4,lora_alpha=8,lora_dropout=0.,target_modules=targets,task_type="CAUSAL_LM"))
     ids=torch.tensor([[12,252,253,251,13,14,15,2]])
@@ -151,12 +152,32 @@ def test_qwen_vision_lora_sft_and_grpo_backward():
             "pixel_values":torch.randn(4,1176),"image_grid_thw":torch.tensor([[1,2,2]])}
     model.eval()
     old=token_logps(model,inputs,6).detach()
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant":False})
+    model.enable_input_require_grads()
+    model.train()
     optimizer=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],lr=.01)
     loss=clipped_loss(token_logps(model,inputs,6),old,1.)
     loss.backward();assert any(p.grad is not None and p.grad.abs().sum()>0 for p in model.parameters() if p.requires_grad)
     optimizer.step();optimizer.zero_grad()
     assert token_logps(model,inputs,6).mean()>old.mean()
     sft=-token_logps(model,inputs,6).mean();sft.backward();assert torch.isfinite(sft)
+    optimizer.step();optimizer.zero_grad();model.eval()
+    # A committed adapter + optimizer must produce the same *next* update as
+    # uninterrupted training, not just reload without an exception.
+    from tube_agent.lab.distributed_train import commit_checkpoint
+    from peft import PeftModel
+    class Processor:
+        def save_pretrained(self,path):
+            (path/"processor_test.json").write_text("{}")
+    saved=commit_checkpoint(model,Processor(),optimizer,tmp_path,2,{"test":"tiny_multimodal"})
+    restored_base=Qwen3_5ForConditionalGeneration(config);restored_base.load_state_dict(original_state)
+    restored=PeftModel.from_pretrained(restored_base,saved,is_trainable=True,local_files_only=True);restored.eval()
+    resumed_optimizer=torch.optim.AdamW([p for p in restored.parameters() if p.requires_grad],lr=.01)
+    resumed_optimizer.load_state_dict(torch.load(saved/"optimizer.pt",weights_only=True)["optimizer"])
+    assert torch.allclose(token_logps(model,inputs,6),token_logps(restored,inputs,6),atol=1e-6,rtol=0)
+    for net,opt in ((model,optimizer),(restored,resumed_optimizer)):
+        (-token_logps(net,inputs,6).mean()).backward();opt.step();opt.zero_grad()
+    assert torch.allclose(token_logps(model,inputs,6),token_logps(restored,inputs,6),atol=1e-6,rtol=0)
 
 def test_sam_native_session_contract_and_cleanup():
     from tube_agent.lab.sam_server import segment_snapshot

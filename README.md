@@ -8,6 +8,15 @@ SAM weights download anonymously from ModelScope with checksum verification.
 See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 checks.
 This is a scaled method reproduction, not a claim to the paper's benchmark scores.
 
+**Four-H100 automatic experiment:** after applying the offline auto-pipeline
+patch, run `bash scripts/start_lab_all.sh runs/lab_auto/fixed_seed0` on the GPU
+instance. GPU 1 serves SAM; GPUs 0/2/3 mine, evaluate and synchronously train one
+policy. The sequence includes fixed-seed search, GRPO warm-up, self-success SFT,
+two RL phases, held-out evaluation, resumable checkpoints and verified success
+videos when available. Read the one-command section in [LAB_GUIDE.md](LAB_GUIDE.md)
+for budgets, progress paths and the distinction between execution completion and
+task success.
+
 ## Legacy two-task oracle-state baseline
 
 The following instructions describe the earlier `tube_agent.run` baseline.

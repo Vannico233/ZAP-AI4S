@@ -31,6 +31,7 @@ def main():
         for i,frame in enumerate(views):canvas.paste(Image.fromarray(frame["rgb"]),(640*i,64))
         draw=ImageDraw.Draw(canvas)
         label="Qwen3.5-4B" if result.get("policy")=="model" else "SCRIPTED PHYSICS DIAGNOSTIC (NOT QWEN)"
+        if result.get("search_prefix_length",0):label+=" / MODEL PREFIX SEARCH"
         draw.text((12,8),f"{label} / {result['task']} / seed {result['seed']} / LOCAL ACTION REPLAY",fill="white")
         draw.text((12,28),f"Step {stage['step']} | "+json.dumps(stage["action"]),fill="white")
         draw.text((12,46),"Saved actions; no new inference. Judge: "+str(env.result()["success"]),fill="white")

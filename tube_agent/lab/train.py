@@ -29,7 +29,7 @@ def clipped_loss(new_logp,old_logp,advantage,clip=.2):
     ratio=torch.exp(new_logp-old_logp)
     return -torch.minimum(ratio*advantage,torch.clamp(ratio,1-clip,1+clip)*advantage).mean()
 
-def load(model_path,adapter=None,rank=16):
+def load(model_path,adapter=None,rank=16,device="cuda:0",trainable=True):
     import torch
     from transformers import AutoProcessor,Qwen3_5ForConditionalGeneration
     from peft import LoraConfig,get_peft_model,PeftModel
@@ -38,17 +38,19 @@ def load(model_path,adapter=None,rank=16):
     path=str(resolve_model(model_path))
     processor=AutoProcessor.from_pretrained(path,local_files_only=True)
     model=Qwen3_5ForConditionalGeneration.from_pretrained(path,dtype=torch.bfloat16,
-                         attn_implementation="sdpa",local_files_only=True).to("cuda:0")
-    if adapter:model=PeftModel.from_pretrained(model,adapter,is_trainable=True,local_files_only=True)
-    else:
+                         attn_implementation="sdpa",local_files_only=True).to(device)
+    if adapter:model=PeftModel.from_pretrained(model,adapter,is_trainable=trainable,local_files_only=True)
+    elif trainable:
         targets=[name for name,module in model.named_modules() if isinstance(module,torch.nn.Linear) and ".language_model." in name]
         if not targets:raise RuntimeError("No Qwen language-model LoRA targets found")
         model=get_peft_model(model,LoraConfig(r=rank,lora_alpha=2*rank,lora_dropout=0.,
                             target_modules=targets,task_type="CAUSAL_LM"))
-    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant":False})
-    model.enable_input_require_grads()
-    model.config.use_cache=False
-    model.config.text_config.use_cache=False
+    if trainable:
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant":False})
+        model.enable_input_require_grads()
+        model.config.use_cache=False
+        model.config.text_config.use_cache=False
+    else:model.eval()
     return model,processor
 
 def sample_inputs(processor,row,max_context=16384):

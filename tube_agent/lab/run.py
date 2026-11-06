@@ -13,13 +13,14 @@ from tube_agent.run import summarize
 from .env import LabEnv,TASKS
 from .policy import HttpGenerator,VisualPolicy,execute,SYSTEM
 from .vision import Observer,SamClient,PERCEPTION_VERSION
+from .experiment import write_json
 
 def state(env):
     return np.r_[env.data.qpos,env.data.qvel,env.data.ctrl,env.data.eq_active,
                  env.data.time,env.lift_seconds,env.place_seconds,env.insert_seconds,env.cap_seconds,
                  env.lifted_once,env.thread_released].tolist()
 
-def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8,max_steps=40,prefix=None,save_frames=True):
+def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8,max_steps=40,prefix=None,save_frames=True,log_progress=False):
     directory=Path(directory);directory.mkdir(parents=True,exist_ok=False)
     env=observer=None;started=time.monotonic();records=[];error=None;feedback=None
     policy=VisualPolicy(generator,temperature,seed*1009+attempt)
@@ -44,6 +45,10 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                 if hasattr(generator,"last_response_ids"):
                     row["response_ids"]=list(generator.last_response_ids)
                 records.append(row);log.write(json.dumps(row)+"\n");log.flush()
+                if log_progress:
+                    print(json.dumps({"event":"action","task":task,"attempt":attempt,"step":env.steps,
+                                      "action":action,"feedback":feedback,"reward":row["judge_after"]["reward"],
+                                      "success":row["judge_after"]["success"]}),flush=True)
         result=env.result()
     except Exception as exc:
         error=f"{type(exc).__name__}: {exc}"
@@ -59,13 +64,14 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                   missing_detection_observations=sum(bool(r.get("perception",{}).get("missing_queries")) for r in records),
                   prompt_sha256=hashlib.sha256(SYSTEM.encode()).hexdigest(),demonstration=None,
                   max_steps=max_steps,search_prefix_length=len(prefix or []),error=error,seconds=round(time.monotonic()-started,2))
-    (directory/"result.json").write_text(json.dumps(result,indent=2),encoding="utf-8")
+    result["generator_provenance"]=getattr(generator,"provenance",None)
+    write_json(directory/"result.json",result)
     return result,records
 
 class PrefixTree:
     """UCB selection over deterministic prefixes; only model-generated actions."""
-    def __init__(self,max_steps=40):
-        self.nodes={"root":{"prefix":[],"visits":0,"wins":0,"progress":0.}};self.round=0;self.max_steps=max_steps
+    def __init__(self,max_steps=40,max_nodes=128):
+        self.nodes={"root":{"prefix":[],"visits":0,"wins":0,"progress":0.}};self.round=0;self.max_steps=max_steps;self.max_nodes=max_nodes
     @staticmethod
     def key(rows):return hashlib.sha256(json.dumps([r["action"] for r in rows],sort_keys=True).encode()).hexdigest()
     def select(self):
@@ -82,9 +88,14 @@ class PrefixTree:
             if row["action"]["action"] not in ("move","gripper"):continue
             if length>=self.max_steps:continue
             prefix=rows[:length];key=self.key(prefix)
-            n=self.nodes.setdefault(key,{"prefix":copy.deepcopy(prefix),"visits":0,"wins":0,
+            # Immutable recorded rows can share large embedded images across nodes.
+            n=self.nodes.setdefault(key,{"prefix":list(prefix),"visits":0,"wins":0,
                                         "progress":min(.9,max(0.,row["judge_after"]["reward"]+.01*length))})
             n["visits"]+=1;n["wins"]+=int(result["success"])
+        while len(self.nodes)>self.max_nodes:
+            worst=min((k for k in self.nodes if k!="root"),key=lambda k:
+                      (self.nodes[k]["wins"]/(1+self.nodes[k]["visits"])+self.nodes[k]["progress"]))
+            del self.nodes[worst]
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)

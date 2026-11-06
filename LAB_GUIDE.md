@@ -16,7 +16,7 @@ available. New experiments use `tube_agent.lab` and `runs/lab_v1`.
 | Policy input | Annotated RGB, estimated surface geometry, robot proprioception and execution feedback. No simulator object coordinates or success/reward fields |
 | Data mining | Independent fixed-scene stochastic trials; optional deterministic prefix replay and UCB tree search over model-generated actions |
 | Training | Multimodal self-success LoRA SFT; online group-relative clipped policy optimization, terminal ladder rewards, invalid-turn negative advantages |
-| Differences from paper | MuJoCo rather than Isaac Sim; 4B rather than 27B; four tasks rather than forty; synchronous SAM snapshots at action boundaries rather than asynchronous temporal perception; LoRA and a small single-GPU GRPO implementation, beta=0 |
+| Differences from paper | MuJoCo rather than Isaac Sim; 4B rather than 27B; four tasks rather than forty; synchronous SAM snapshots at action boundaries rather than asynchronous temporal perception; LoRA and a small synchronous GRPO implementation, beta=0 |
 | Not claimed | Real-robot transfer, original benchmark scores, original training scale, or verified 4B/SAM GPU results before the server smoke run |
 
 The `unscrew` task explicitly clamps the tube body in a fixture. Its cap is a
@@ -29,6 +29,111 @@ reorientation, physical entry into a collision-bounded square hole, release and
 withdrawal. The nominal hole is 28 mm wide, floor 8 mm, rim 50 mm above the table.
 The new environment uses a 1 ms timestep and a 2000 N/m finger servo spring;
 these changes do not apply to the old baseline.
+
+## One-command experiment on four H100 80GB GPUs
+
+After applying the auto-pipeline patch to the existing offline bundle, run on
+the **GPU instance**. Existing SAM on GPU 1 can stay running. Stop the old Qwen
+server in Terminal B and old sampling jobs first; the pipeline loads its own
+three policy replicas and does not use port 8000. No dependency reinstall or
+new weights are required. If SAM is not running, the pipeline starts and owns
+its own SAM process, using the existing `.venv-sam` and checked weights.
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-offline-20261106
+bash scripts/start_lab_all.sh runs/lab_auto/fixed_seed0
+```
+
+The launcher survives terminal disconnection. Repeating the **same command and
+options** after interruption resumes completed jobs and committed optimizer
+checkpoints. A file lock prevents concurrent pipelines writing to the same
+output. It never terminates a pre-existing external service. To use a changed
+budget or changed source code, choose a new output directory; configuration
+changes are rejected on an existing run instead of silently mixing experiments.
+
+GPU assignment: GPU 1 runs SAM; GPUs 0, 2, 3 run independent policy replicas
+for mining/evaluation, then synchronized replicas of **one shared policy** for
+SFT/GRPO. During each GRPO update all three ranks generate from the same weights,
+task and initial scene. Their six total rollouts form one reward group. Gradient
+sums are normalized by the global group size, not independent per-GPU training.
+Variable trajectory lengths and ranks with no local gradient are supported.
+
+Automatic stages, in order:
+
+1. Check available GPU memory and disk; check rendering, camera visibility and
+   physical feasibility. These scripted diagnostics are NOT training data.
+2. A three-rank visual training smoke test: real SAM + rendered images, Qwen
+   generation, LoRA backward, and synchronized optimizer step. Discard these
+   smoke weights and trajectories before starting the experiment.
+3. Measure the base policy on train scene seed 0, three independent attempts
+   per primitive; then prefix search up to 24 attempts per task. Stop each search
+   at two distinct, valid, model-generated successful action sequences.
+4. If any task lacks two successes, run eight GRPO warm-up updates, emphasizing
+   unresolved tasks, then run another bounded search with the warm-up policy.
+5. Deduplicate self-success actions from base trials, both searches and warm-up
+   rollouts. Exclude failed, invalid, assisted, test and interrupted episodes.
+   Run one SFT epoch on the resulting data. If no eligible success exists, skip
+   SFT explicitly and continue dense-reward GRPO from the warm-up checkpoint;
+   never insert a scripted demonstration or label a failed rollout successful.
+6. Run 12 GRPO updates on seed 0, then 16 updates on train seeds 0, 1, 2, 3.
+   The same four primitives are trained; `rack_transfer` is never trained.
+7. Compare base, SFT (if available), fixed-scene RL and diverse-scene RL on four
+   primitive tasks, validation seeds 0 and 1, two attempts each. Select by macro
+   success rate, then mean reward. Test scenes and the composition are excluded
+   from this choice. It is possible that the base model remains the best.
+8. Evaluate base and selected policy on all five tasks, test seeds 0, 1, 2,
+   two attempts each. Also repeat the selected policy on train scene seed 0.
+   Split-specific scene generation keeps train/validation/test scenes distinct.
+9. Export at most one verified successful video per task, preferring final
+   fixed-scene/evaluation successes. Earlier mining successes are explicitly
+   attributed to their source checkpoint/search; they are not final-policy
+   success-rate evidence. Failed or divergent replays do not count as success
+   videos. If a task never succeeds, report `no_success` instead of fabricating
+   a video. A different-seed fallback is recorded in the video index.
+
+Normal execution has a maximum of **559 model episodes** with these defaults
+(early search stops reduce this; interrupted retries are additional). Each has
+at most 40 actions except the three one-action training probes. This is a
+bounded first experiment, not a promise of overnight success or the paper's
+training scale. Actual time depends on model/SAM throughput and trajectory
+length. At least 48 GiB free on each policy GPU and 30 GiB free disk are checked.
+
+```bash
+cat runs/lab_auto/fixed_seed0/status.json
+tail -n 30 runs/lab_auto/fixed_seed0/launcher.log
+cat runs/lab_auto/fixed_seed0/report.json
+cat runs/lab_auto/fixed_seed0/videos/index.json
+```
+
+The coordinator emits a heartbeat every 30 seconds; individual action progress
+is in `logs/*.log`. `REPORT.md` and `report.json` compare base/final success
+counts. `selection.json` records validation scores. `rl_fixed/metrics` and
+`rl_diverse/metrics` record rewards, advantages and whether an optimizer update
+was possible; equal-reward valid groups yield no policy gradient.
+
+For budget inspection without loading models:
+
+```bash
+bash scripts/lab.sh all --plan
+```
+
+For a larger **new** experiment, for example:
+
+```bash
+bash scripts/start_lab_all.sh runs/lab_auto/extended_seed0 \
+  --search-attempts 48 --warmup-updates 16 --fixed-updates 24 --diverse-updates 64
+```
+
+Training resumes the optimizer plus adapter at atomic checkpoints. GRPO saves
+every update; SFT saves every four batches and at the final batch. Interrupted
+uncommitted updates are regenerated; their old files are kept as `.incomplete-*`
+and excluded from SFT. The inherited single-GPU CLI below remains available,
+but its adapter-only warm-start differs from this optimizer-aware resume.
+
+This follows the self-success mining, SFT, and terminal dense-reward GRPO recipe
+in [ZAP section 3.3](https://arxiv.org/html/2610.35817v3#S3.SS3), with the explicit
+scale/architecture differences above. The reward ladder below is evaluated on
+the final state, not repeatedly accumulated for approaching the same object.
 
 ## 1. Upload and prepare (networked CPU instance)
 

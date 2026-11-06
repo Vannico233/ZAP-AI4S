@@ -53,8 +53,11 @@ case "$STAGE" in
     exec "$PY" -m tube_agent.lab.train "$STAGE" --output "checkpoints/lab_${STAGE}_$STAMP" "$@" ;;
   replay)
     exec "$PY" -m tube_agent.lab.replay "$@" ;;
+  all|pipeline)
+    exec "$PY" -u -m tube_agent.lab.pipeline "$@" ;;
   *)
-    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|render-check|vision-check|check|sample|search|export|sft|grpo|eval|replay} [options]"
+    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|render-check|vision-check|check|sample|search|export|sft|grpo|eval|replay|all} [options]"
+    echo "all: resumable full experiment, SAM on GPU 1 and synchronized policies on GPUs 0,2,3."
     echo "sam: GPU 1; model: GPU 0; sft/grpo: GPU 2. Override SAM_GPU, QWEN_GPU, TRAIN_GPU."
     echo "First run physics, then start sam + model in separate terminals, then check."
     [[ "$STAGE" == help ]] || exit 1 ;;
