@@ -34,6 +34,17 @@ bash scripts/prepare_cpu.sh
 
 脚本把独立的 **Python 3.13.5** 下载到共享目录 `.python-linux`，再创建 `.venv-linux`，保留系统 Python。这样不会因为 CPU/GPU 镜像的系统 Python 路径不同而丢失解释器。安装 PyTorch 2.10.0 / torchvision 0.25.0 的 **CUDA 12.8** 版本，以及 Transformers 5.3.0。没有 vLLM / FlashAttention / FLA 等编译依赖；先用 PyTorch 自带实现，吞吐量并非最优。
 
+引导工具 `uv` 使用 [Astral 官方独立安装器](https://docs.astral.sh/uv/getting-started/installation/)，下载到项目的 `.bootstrap-linux/bin`；不依赖 CPU 实例的 Python/pip，不修改用户的 shell 配置。CPU 实例需有 `curl` 或 `wget`，且能访问 Astral/GitHub、PyPI 和 PyTorch 下载站。普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple` 后运行脚本。
+
+如果旧版脚本在 `pip install uv==0.13.7` 处报 `No matching distribution found`，先更新再重跑，无需删除已创建的环境：
+
+```bash
+git pull --ff-only
+bash scripts/prepare_cpu.sh
+```
+
+这条错误本身不能区分镜像访问、CPU Python/pip 兼容性等原因；新版直接绕过系统 pip 的 uv 安装步骤。Python、PyTorch 和模型依赖版本保持不变。
+
 模型默认位置：
 
 ```text
