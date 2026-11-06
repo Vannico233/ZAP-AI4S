@@ -3,6 +3,7 @@
 .bootstrap*/
 .uv-cache/
 .wheelhouse/
+dist/
 __pycache__/
 .pytest_cache/
 *.egg-info/

@@ -6,7 +6,7 @@ torchvision 0.25.0+cpu、Transformers 5.3.0、PEFT 0.18.1。
 
 ## 已实际运行
 
-- `python -m pytest -q`：**41 passed**。涵盖物理抓取与搬运、掉落、空提交、越界、
+- `python -m pytest -q`：**47 passed**。涵盖物理抓取与搬运、掉落、空提交、越界、
   无效动作预算、真实本机 HTTP 闭环、自采数据过滤、训练标签屏蔽等。
 - 小型随机初始化 **Qwen3.5 架构**：LoRA 前向、反向、保存、重载和生成通过。
   这用于接口验证，不是 Qwen3.5-4B 权重的训练结果。
@@ -25,6 +25,13 @@ torchvision 0.25.0+cpu、Transformers 5.3.0、PEFT 0.18.1。
   不引入无关包、拒绝越界路径和不满足版本的依赖。CUDA 版的实际复制与运行仍需服务器验证。
 - 用户提供的 DiG 环境版本：Torch 2.10.0+cu128、torchvision 0.25.0+cu128、Transformers 5.22.1。
   默认流程只复制 Torch 的依赖树，项目另装 Transformers 5.3.0；未在本机访问或修改用户的 DiG 环境。
+- 离线包：已下载 **42 个 Linux x86_64 / CPython 3.11 安装包**，逐个核对 PyPI 官方 SHA256、
+  文件长度、ZIP 完整性、Python/平台标签，并按 Python 3.11.18/Linux 条件校验依赖闭包。
+  Torch/CUDA 由服务器现有环境提供，已从下载解析中显式排除；复制脚本会独立检查其依赖。
+  真实 pip 24 使用 `--no-index --no-deps --require-hashes` 的跨平台安装预演选中了全部 42 个包。
+  这属于离线文件与安装候选检查，不是本机运行 Linux 二进制或 H100 的结果。
+- 离线入口检查代码和包文件哈希；测试覆盖同长度内容损坏、缺失/额外安装包、越界清单路径，
+  以及错误 Python/glibc 版本的拒绝。
 - 视频生成和静态图片渲染通过。
 
 ## 规则策略的环境检查
