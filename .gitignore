@@ -1,0 +1,13 @@
+.venv*/
+.python*/
+.bootstrap*/
+.uv-cache/
+.wheelhouse/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+runs/
+data/
+checkpoints/
+.env
+debug.png
