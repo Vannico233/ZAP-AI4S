@@ -3,7 +3,7 @@
 用 **Qwen3.5-4B → 简单 JSON 动作 → MuJoCo Panda 机械臂**，完成两个实验室基础操作。
 核心只有仿真、模型接口、运行记录和自采成功轨迹微调；不依赖 Open-RUA 的服务调度、MCP、SAM、动作模型或多机器人框架。
 
-本地 Python 3.13.5 已通过 47 项测试；规则策略的常规拿起、搬运检查均为 20/20。
+本地 Python 3.13.5 已通过 48 项测试；规则策略的常规拿起、搬运检查均为 20/20。
 这些不是 Qwen 的成绩，完整验证范围和示例视频见 [VALIDATION.md](VALIDATION.md)。
 
 ## 当前实现范围
@@ -25,20 +25,22 @@
 
 ### 下载不稳定时：上传离线包（推荐本服务器使用）
 
-离线包 `ZAP-AI4S-offline-linux-py311-20261106.tar.gz` 包含完整代码、机器人资产和 **42 个 Linux/Python 3.11 安装包**。Torch/CUDA 从已确认存在的 DiG 环境本地复制，模型权重使用原共享目录。服务器不需要 `git pull` 或访问任何包下载站。
+离线包 `ZAP-AI4S-offline-linux-py311-20261106-v2.tar.gz` 包含完整代码、机器人资产和 **42 个 Linux/Python 3.11 安装包**。Torch/CUDA 从已确认存在的 DiG 环境本地复制，模型权重使用原共享目录。服务器不需要 `git pull` 或访问任何包下载站。
 
 将压缩包上传到 `wangningchong` 目录后，在 CPU 实例执行：
 
 ```bash
-cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong
-tar -xzf ZAP-AI4S-offline-linux-py311-20261106.tar.gz
-cd ZAP-AI4S-offline-20261106
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong &&
+tar -xzf ZAP-AI4S-offline-linux-py311-20261106-v2.tar.gz &&
+cd ZAP-AI4S-offline-20261106 &&
 bash scripts/prepare_offline.sh
 ```
 
 入口先核对所有代码和安装包的 SHA256，再创建独立环境、复制 Torch/CUDA，使用 `--no-index --require-hashes` 从包内文件安装，最后检查依赖和运行测试。环境要求为 Linux x86_64、Python 3.11、glibc ≥ 2.28；脚本会在开始复制前检查。Git 下载失败后，逐行粘贴的下一条命令仍可能运行旧代码；离线包包含同一提交的全部代码，不需要更新原仓库。
 
 GPU 实例也进入新目录 `ZAP-AI4S-offline-20261106`，然后沿用后文的环境激活和实验命令。后文示例中的 `ZAP-AI4S` 路径需替换为这个新目录。
+
+已有首版离线包、且安装末尾只有 `test_dependency_copy_is_independent_and_excludes_unrelated_packages` 失败时，可上传小补丁 `ZAP-AI4S-offline-cache-fix.tar.gz` 到 `wangningchong`，在该目录解压后重跑准备脚本。补丁含修复文件和更新的校验清单，保留已安装环境与 42 个安装包。修复会在本地复制完成后刷新 Python 的包发现缓存，避免目录时间戳未变化时读到旧的空列表。
 
 ### 网络正常时：从 GitHub 准备
 

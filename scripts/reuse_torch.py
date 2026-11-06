@@ -1,6 +1,7 @@
 """Copy the already installed Torch dependency tree into the project venv, offline."""
 import argparse
 import csv
+import importlib
 import importlib.metadata as metadata
 import json
 import os
@@ -130,6 +131,10 @@ def copy_packages(packages, target):
                 with temporary.open("w", newline="", encoding="utf-8") as record:
                     csv.writer(record).writerows((rel, digest, size) for _, _, rel, digest, size in files)
                 os.replace(temporary, destination)
+
+    # A directory's mtime may not change between the empty scan above and a fast
+    # copy. Invalidate both module and distribution discovery caches explicitly.
+    importlib.invalidate_caches()
 
 
 def probe(python, describe=False):

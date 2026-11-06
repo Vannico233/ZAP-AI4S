@@ -1,7 +1,9 @@
 import csv
 import hashlib
 import importlib.metadata as metadata
+import os
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -57,3 +59,27 @@ def test_source_dependency_mismatch_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr("scripts.reuse_torch.sys.prefix", str(tmp_path))
     with pytest.raises(RuntimeError, match="mismatch"):
         dependency_plan(["zap-leaf>=2"])
+
+
+def test_new_distributions_are_visible_when_directory_timestamp_is_unchanged(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    dist = make_distribution(source, "zap-copy")
+    monkeypatch.setattr("scripts.reuse_torch.metadata.distribution", lambda name: dist)
+    monkeypatch.setattr("scripts.reuse_torch.sys.prefix", str(source))
+    plan = dependency_plan(["zap-copy"])
+    target = tmp_path / "target"
+    target.mkdir()
+    stamp = 1_700_000_000_000_000_000
+    os.utime(target, ns=(stamp, stamp))
+    assert list(metadata.distributions(path=[str(target)])) == []
+    original_copy = shutil.copy2
+
+    def copy_with_unchanged_directory_timestamp(*args, **kwargs):
+        result = original_copy(*args, **kwargs)
+        # Reproduce filesystems where consecutive directory updates share an mtime.
+        os.utime(target, ns=(stamp, stamp))
+        return result
+
+    monkeypatch.setattr("scripts.reuse_torch.shutil.copy2", copy_with_unchanged_directory_timestamp)
+    copy_packages(plan, target)
+    assert {d.metadata["Name"] for d in metadata.distributions(path=[str(target)])} == {"zap-copy"}
