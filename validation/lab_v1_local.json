@@ -1,0 +1,267 @@
+{
+  "date": "2026-11-06",
+  "scope": "Local scripted simulation and CPU software tests; NOT Qwen success rates",
+  "runtime": {
+    "python": "3.13.5",
+    "mujoco": "3.3.7",
+    "torch": "2.10.0+cpu",
+    "transformers": "5.3.0",
+    "peft": "0.18.1"
+  },
+  "pytest": {
+    "passed": 88,
+    "warnings": 1,
+    "seconds": 70.7,
+    "final_targeted": {
+      "passed": 23,
+      "seconds": 22.9,
+      "distinct_test_total": 89
+    }
+  },
+  "physics_and_visibility": [
+    {
+      "task": "pick",
+      "result": {
+        "success": true,
+        "reward": 4.95,
+        "lifted_once": true,
+        "lift_height_m": 0.174,
+        "held": true,
+        "stable_place_seconds": 0.0,
+        "steps": 5,
+        "invalid_actions": 0,
+        "tube_position": [
+          0.4611,
+          -0.1785,
+          0.1864
+        ],
+        "reward_terms": {
+          "approach": 0.14888,
+          "grasped": true,
+          "terminal_progress": 0.55,
+          "success_bonus": 5.0,
+          "length_penalty": 0.05,
+          "invalid_penalty": 0.0
+        }
+      },
+      "initial_visibility": [
+        {
+          "camera": "top",
+          "target": "tube_red",
+          "visible_pixels": 763,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        },
+        {
+          "camera": "side",
+          "target": "tube_red",
+          "visible_pixels": 499,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        }
+      ]
+    },
+    {
+      "task": "transport",
+      "result": {
+        "success": true,
+        "reward": 4.91,
+        "lifted_once": true,
+        "lift_height_m": 0.004,
+        "held": false,
+        "stable_place_seconds": 1.693,
+        "steps": 9,
+        "invalid_actions": 0,
+        "tube_position": [
+          0.45,
+          0.2199,
+          0.0159
+        ],
+        "reward_terms": {
+          "approach": 0.08037,
+          "grasped": false,
+          "terminal_progress": 0.89995,
+          "success_bonus": 5.0,
+          "length_penalty": 0.09,
+          "invalid_penalty": 0.0
+        }
+      },
+      "initial_visibility": [
+        {
+          "camera": "top",
+          "target": "tube_red",
+          "visible_pixels": 763,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        },
+        {
+          "camera": "side",
+          "target": "tube_red",
+          "visible_pixels": 499,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        }
+      ]
+    },
+    {
+      "task": "insert",
+      "result": {
+        "success": true,
+        "reward": 4.9,
+        "lifted_once": true,
+        "lift_height_m": 0.0079,
+        "held": false,
+        "stable_place_seconds": 2.132,
+        "steps": 10,
+        "invalid_actions": 0,
+        "tube_position": [
+          0.4393,
+          0.1875,
+          0.0644
+        ],
+        "insertion_stable_seconds": 2.028,
+        "reward_terms": {
+          "approach": 0.08338,
+          "grasped": false,
+          "terminal_progress": 0.9,
+          "success_bonus": 5.0,
+          "length_penalty": 0.1,
+          "invalid_penalty": 0.0
+        }
+      },
+      "initial_visibility": [
+        {
+          "camera": "top",
+          "target": "tube_red",
+          "visible_pixels": 763,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        },
+        {
+          "camera": "side",
+          "target": "tube_red",
+          "visible_pixels": 499,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        }
+      ]
+    },
+    {
+      "task": "unscrew",
+      "result": {
+        "success": true,
+        "reward": 4.75,
+        "lifted_once": false,
+        "lift_height_m": 0.0,
+        "held": false,
+        "stable_place_seconds": 0.0,
+        "steps": 25,
+        "invalid_actions": 0,
+        "tube_position": [
+          0.461,
+          -0.1784,
+          0.0668
+        ],
+        "thread_released": true,
+        "cap_turns": 1.0068,
+        "cap_position": [
+          0.4605,
+          -0.1782,
+          0.2295
+        ],
+        "cap_held": true,
+        "cap_hold_seconds": 1.061,
+        "reward_terms": {
+          "approach": 0.14979,
+          "grasped": true,
+          "terminal_progress": 0.9,
+          "success_bonus": 5.0,
+          "length_penalty": 0.25,
+          "invalid_penalty": 0.0
+        }
+      },
+      "initial_visibility": [
+        {
+          "camera": "top",
+          "target": "cap",
+          "visible_pixels": 531,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        },
+        {
+          "camera": "side",
+          "target": "cap",
+          "visible_pixels": 289,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        }
+      ]
+    },
+    {
+      "task": "rack_transfer",
+      "result": {
+        "success": true,
+        "reward": 4.91,
+        "lifted_once": true,
+        "lift_height_m": 0.0,
+        "held": false,
+        "stable_place_seconds": 1.5,
+        "steps": 9,
+        "invalid_actions": 0,
+        "tube_position": [
+          0.4398,
+          0.1902,
+          0.0647
+        ],
+        "insertion_stable_seconds": 1.43,
+        "reward_terms": {
+          "approach": 0.08256,
+          "grasped": false,
+          "terminal_progress": 0.9,
+          "success_bonus": 5.0,
+          "length_penalty": 0.09,
+          "invalid_penalty": 0.0
+        }
+      },
+      "initial_visibility": [
+        {
+          "camera": "top",
+          "target": "tube_red",
+          "visible_pixels": 507,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        },
+        {
+          "camera": "side",
+          "target": "tube_red",
+          "visible_pixels": 349,
+          "purpose": "QA only; simulator segmentation is NEVER a policy input"
+        }
+      ]
+    }
+  ],
+  "video_replay": {
+    "pick": {
+      "all_states_match": true,
+      "actions": 5,
+      "success": true,
+      "new_inference": false
+    },
+    "transport": {
+      "all_states_match": true,
+      "actions": 9,
+      "success": true,
+      "new_inference": false
+    },
+    "insert": {
+      "all_states_match": true,
+      "actions": 10,
+      "success": true,
+      "new_inference": false
+    },
+    "unscrew": {
+      "all_states_match": true,
+      "actions": 25,
+      "success": true,
+      "new_inference": false
+    }
+  },
+  "pending": [
+    "Native SAM 3.1 GPU inference",
+    "Full Qwen3.5-4B image inference",
+    "H100 EGL rendering",
+    "Full-size SFT/GRPO GPU pilot",
+    "Model success rates"
+  ]
+}

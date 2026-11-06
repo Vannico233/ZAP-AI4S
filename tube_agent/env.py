@@ -115,7 +115,11 @@ class TubeEnv:
         self._add_tube(world, "red", x, y, yaw, self.radius, self.half_length)
         if ood:
             self._add_tube(world, "blue", .30, .01, -.25, .012, .045)
+        self._customize_scene(root, world)
         self.model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding="unicode"))
+
+    def _customize_scene(self, root, world):
+        """Extension hook. The original two-task scene is unchanged."""
 
     @staticmethod
     def _add_tube(world, color, x, y, yaw, radius, half_length):
@@ -186,9 +190,11 @@ class TubeEnv:
             if self._tick % 40 == 0:
                 self._capture()
 
-    def _solve_ik(self, xyz, rotation):
+    def _solve_ik(self, xyz, rotation, initial=None):
         d, m = self.ik_data, self.model
         d.qpos[:] = self.data.qpos
+        if initial is not None:
+            d.qpos[:7] = initial
         jp, jr = np.zeros((3, m.nv)), np.zeros((3, m.nv))
         for _ in range(100):
             mujoco.mj_forward(m, d)

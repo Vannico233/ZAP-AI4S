@@ -1,3 +1,7 @@
+# New visual four-task implementationThe separate `tube_agent.lab` implementation is documented and validated in
+[LAB_VALIDATION.md](LAB_VALIDATION.md). The older results below concern the
+two-task oracle-state baseline; they must not be used as visual-policy scores.
+
 # 本地验证记录
 
 日期：2026-11-06。运行平台：Windows，Python 3.13.5。

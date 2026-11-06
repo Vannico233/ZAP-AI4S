@@ -12,3 +12,5 @@ data/
 checkpoints/
 .env
 debug.png
+assets/sam3.1/
+sam-wheels/

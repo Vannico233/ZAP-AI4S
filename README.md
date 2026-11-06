@@ -1,4 +1,17 @@
-# ZAP-AI4S：试管拿取与搬运
+# ZAP-AI4S: four-task visual laboratory reproduction
+
+**New experiments:** use [LAB_GUIDE.md](LAB_GUIDE.md) for `pick`, `transport`,
+`insert`, `unscrew`, and held-out `rack_transfer`. The new `tube_agent.lab` flow
+uses two RGB-D views, native SAM 3.1, Qwen3.5-4B, fixed-seed sampling, model-prefix
+search, multimodal self-success SFT and online GRPO with staged rewards.
+SAM weights download anonymously from ModelScope with checksum verification.
+See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 checks.
+This is a scaled method reproduction, not a claim to the paper's benchmark scores.
+
+## Legacy two-task oracle-state baseline
+
+The following instructions describe the earlier `tube_agent.run` baseline.
+They do not describe the new visual pipeline above.
 
 用 **Qwen3.5-4B → 简单 JSON 动作 → MuJoCo Panda 机械臂**，完成两个实验室基础操作。
 核心只有仿真、模型接口、运行记录和自采成功轨迹微调；不依赖 Open-RUA 的服务调度、MCP、SAM、动作模型或多机器人框架。

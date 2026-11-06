@@ -1,0 +1,14 @@
+# Isolated .venv-sam only. Do not install into the Qwen/baseline environment.
+# sam3 wheel built from facebookresearch/sam3 f1647e8d0c1d280991f4d1b7d974c2704537fe66.
+sam3==0.1.0
+numpy==1.26.4
+timm==1.0.22
+ftfy==6.1.1
+iopath==0.1.10
+einops==0.8.1
+scipy==1.15.3
+psutil==7.0.0
+opencv-python-headless==4.11.0.86
+pycocotools==2.0.11
+setuptools==80.9.0
+httpx==0.28.1
