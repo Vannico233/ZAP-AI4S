@@ -13,6 +13,9 @@ torchvision 0.25.0+cpu、Transformers 5.3.0、PEFT 0.18.1。
 - 使用官方 Qwen3.5-4B 的真实分词器和处理配置，离线验证推理与训练的提示 token 一致：
   528 个提示 token，示例动作及结束符共 6 个 token，提示部分全部屏蔽训练损失。
 - 三个 Linux shell 脚本通过 Bash 语法检查；Python 环境通过依赖一致性检查。
+- CPU 安装脚本已改为复用共享目录中的 Python，不再下载 uv 或解释器。本地验证了共享路径
+  接受/拒绝检查、创建隔离虚拟环境及 pip 可用性；这些检查使用 Windows Python 3.13.5。
+  用户已确认共享 Python 为 3.11.18；其 Linux 安装和 GPU 运行仍待服务器验证。
 - 视频生成和静态图片渲染通过。
 
 ## 规则策略的环境检查

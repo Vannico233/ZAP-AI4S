@@ -2,42 +2,53 @@
 # Run on the NETWORKED CPU instance; the shared path must match the GPU instance.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Bootstrap without the CPU image's Python, pip or configured package mirror.
-# Keep uv local to the checkout; do not change the user's shell profile.
-UV_VERSION="0.13.7"
-UV_BIN="$PWD/.bootstrap-linux/bin/uv"
+# Reuse a Python installation on the CPU/GPU shared mount. No uv or Python
+# download is needed. A venv still depends on its base interpreter's files.
+PYTHON_BIN="${TUBE_PYTHON_BIN:-python}"
+SHARED_ROOT="${TUBE_SHARED_ROOT:-$(dirname "$PWD")}"
 PYPI_INDEX="${TUBE_PYPI_INDEX_URL:-https://pypi.org/simple}"
-if [[ "$("$UV_BIN" --version 2>/dev/null || true)" != "uv $UV_VERSION" ]]; then
-  mkdir -p .bootstrap-linux
-  INSTALLER="$PWD/.bootstrap-linux/uv-installer.sh"
-  INSTALLER_URL="https://astral.sh/uv/$UV_VERSION/install.sh"
-  echo "Installing standalone uv $UV_VERSION from Astral..."
-  if command -v curl >/dev/null 2>&1; then
-    curl --fail --location --silent --show-error --retry 3 "$INSTALLER_URL" -o "$INSTALLER"
-  elif command -v wget >/dev/null 2>&1; then
-    wget --tries=3 -O "$INSTALLER" "$INSTALLER_URL"
-  else
-    echo 'Please install curl or wget on the networked CPU instance.' >&2
+TORCH_INDEX="${TUBE_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+
+check_python() {
+  "$1" - "$SHARED_ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+if not (3, 10) <= sys.version_info[:2] <= (3, 13):
+    raise SystemExit("Use Python 3.10-3.13; recommended: the existing shared Python 3.11.")
+shared = Path(sys.argv[1]).resolve()
+base = Path(sys.base_prefix).resolve()
+project = Path.cwd().resolve()
+if not base.is_relative_to(shared) or not project.is_relative_to(shared):
+    raise SystemExit(
+        f"Python base: {base}\nProject: {project}\nShared root: {shared}\n"
+        "Both must be on the CPU/GPU shared mount. Set TUBE_PYTHON_BIN to a shared "
+        "Python executable, or TUBE_SHARED_ROOT to the actual shared parent directory."
+    )
+print(f"Python: {sys.version.split()[0]}\nExecutable: {sys.executable}\nBase: {base}")
+PY
+}
+
+if [[ -e .venv-linux || -L .venv-linux ]]; then
+  if [[ ! -x .venv-linux/bin/python ]]; then
+    echo '.venv-linux exists but its Python is missing. Move this environment aside before retrying.' >&2
     exit 1
   fi
-  UV_UNMANAGED_INSTALL="$PWD/.bootstrap-linux/bin" sh "$INSTALLER"
-fi
-"$UV_BIN" --version
-echo "Python package index: $PYPI_INDEX"
-# The GPU image may not contain the CPU image's system Python. Keep the actual
-# interpreter on the shared filesystem as well as the virtual environment.
-export UV_PYTHON_INSTALL_DIR="$PWD/.python-linux"
-export UV_CACHE_DIR="$PWD/.uv-cache"
-"$UV_BIN" python install 3.13.5 --no-bin
-PYTHON_PATH="$("$UV_BIN" python find 3.13.5 --managed-python)"
-if [[ ! -x .venv-linux/bin/python ]]; then
-  "$UV_BIN" venv .venv-linux --python "$PYTHON_PATH" --seed --default-index "$PYPI_INDEX"
+  check_python "$PWD/.venv-linux/bin/python"
+else
+  check_python "$PYTHON_BIN"
+  "$PYTHON_BIN" -m venv .venv-linux
 fi
 source .venv-linux/bin/activate
-python -c 'import sys; assert sys.version_info[:3] == (3,13,5), "Existing .venv-linux is not Python 3.13.5; use a fresh project checkout"'
-python -m pip install --upgrade pip --index-url "$PYPI_INDEX"
-python -m pip install torch==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r requirements.txt -r requirements-model.txt 'pytest>=8' --index-url "$PYPI_INDEX"
+# Recover if a previous venv creation stopped before installing pip.
+if ! python -m pip --version >/dev/null 2>&1; then
+  python -m ensurepip --upgrade
+fi
+echo "Python package index: $PYPI_INDEX"
+echo "PyTorch CUDA 12.8 index: $TORCH_INDEX"
+python -m pip install --upgrade pip --index-url "$PYPI_INDEX" --retries 5 --timeout 60
+python -m pip install torch==2.10.0 torchvision==0.25.0 --index-url "$TORCH_INDEX" --retries 5 --timeout 60
+python -m pip install -r requirements.txt -r requirements-model.txt 'pytest>=8' --index-url "$PYPI_INDEX" --retries 5 --timeout 60
 python -m pip check
 python -m pip freeze > .venv-linux/installed-packages.txt
 python -m tube_agent.doctor --model "${TUBE_MODEL_PATH:-/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model}"

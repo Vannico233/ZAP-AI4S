@@ -5,6 +5,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import sys
 from pathlib import Path
 
 from .env import TubeEnv
@@ -20,7 +21,8 @@ def main():
     p.add_argument("--gpu", action="store_true")
     p.add_argument("--sim-only", action="store_true")
     args = p.parse_args()
-    report = {"python": platform.python_version(), "platform": platform.platform(),
+    report = {"python": platform.python_version(), "python_executable": sys.executable,
+              "python_base": sys.base_prefix, "platform": platform.platform(),
               "osmesa_library": ctypes.util.find_library("OSMesa")}
     for name in ("mujoco", "numpy", "torch", "torchvision", "transformers", "accelerate", "peft"):
         try:

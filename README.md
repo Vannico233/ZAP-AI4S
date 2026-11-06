@@ -29,21 +29,25 @@
 cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong
 git clone https://github.com/Vannico233/ZAP-AI4S.git
 cd ZAP-AI4S
+export TUBE_PYTHON_BIN=/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/.runtime/py311/bin/python
 bash scripts/prepare_cpu.sh
 ```
 
-脚本把独立的 **Python 3.13.5** 下载到共享目录 `.python-linux`，再创建 `.venv-linux`，保留系统 Python。这样不会因为 CPU/GPU 镜像的系统 Python 路径不同而丢失解释器。安装 PyTorch 2.10.0 / torchvision 0.25.0 的 **CUDA 12.8** 版本，以及 Transformers 5.3.0。没有 vLLM / FlashAttention / FLA 等编译依赖；先用 PyTorch 自带实现，吞吐量并非最优。
+脚本使用共享目录中已有的 **Python 3.11** 创建项目专用环境 `.venv-linux`，不再下载 uv 或 Python，也不修改 DiG 环境的依赖。未设置 `TUBE_PYTHON_BIN` 时使用当前终端的 `python`；已有可用的 `.venv-linux` 则直接复用。接受 Python 3.10–3.13，GPU 实例系统自带的 Python 3.13.5 不限制项目环境的版本。安装 PyTorch 2.10.0 / torchvision 0.25.0 的 **CUDA 12.8** 版本，以及 Transformers 5.3.0。没有 vLLM / FlashAttention / FLA 等编译依赖；先用 PyTorch 自带实现，吞吐量并非最优。
 
-引导工具 `uv` 使用 [Astral 官方独立安装器](https://docs.astral.sh/uv/getting-started/installation/)，下载到项目的 `.bootstrap-linux/bin`；不依赖 CPU 实例的 Python/pip，不修改用户的 shell 配置。CPU 实例需有 `curl` 或 `wget`，且能访问 Astral/GitHub、PyPI 和 PyTorch 下载站。普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple` 后运行脚本。
+虚拟环境仍依赖基础 Python 的文件，因此**基础解释器和项目都必须在 CPU/GPU 共享挂载中**，且两端绝对路径相同。用户确认的基础解释器是 `DiG/.runtime/py311`；GPU 实验完成前请保留该目录。脚本会检查基础解释器和项目是否都位于共享根目录下，默认共享根目录为项目的父目录（这里是 `wangningchong`）；其他布局可设置 `TUBE_SHARED_ROOT`。这个路径检查不能替代 GPU 上的实际启动检查。
 
-如果旧版脚本在 `pip install uv==0.13.7` 处报 `No matching distribution found`，先更新再重跑，无需删除已创建的环境：
+普通 Python 依赖默认显式使用 `https://pypi.org/simple`，PyTorch 单独使用 CUDA 12.8 官方源。CPU 实例仍需访问这两个包下载站；脚本设置了下载重试和超时。如果需要其他镜像，可设置 `TUBE_PYPI_INDEX_URL=https://你的镜像/simple`；PyTorch 源可用 `TUBE_TORCH_INDEX_URL` 指定，但必须提供 CUDA 12.8 对应的软件包。
+
+如果旧版脚本安装或下载 uv 失败（包括 `No matching distribution found`、`SSL_read ... unexpected eof`），更新后直接使用现成解释器，无需删除旧的 `.bootstrap-linux`：
 
 ```bash
 git pull --ff-only
+export TUBE_PYTHON_BIN=/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/.runtime/py311/bin/python
 bash scripts/prepare_cpu.sh
 ```
 
-这条错误本身不能区分镜像访问、CPU Python/pip 兼容性等原因；新版直接绕过系统 pip 的 uv 安装步骤。Python、PyTorch 和模型依赖版本保持不变。
+GPU 端仍使用 `source .venv-linux/bin/activate`；随后 `python --version` 应显示项目环境的版本（新建时为 3.11.18），无需安装到 GPU 的系统 Python 中。PyTorch 和模型依赖版本保持不变。
 
 模型默认位置：
 
