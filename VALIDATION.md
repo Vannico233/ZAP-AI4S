@@ -1,4 +1,6 @@
-# New visual four-task implementationThe separate `tube_agent.lab` implementation is documented and validated in
+# New visual four-task implementation
+
+The separate `tube_agent.lab` implementation is documented and validated in
 [LAB_VALIDATION.md](LAB_VALIDATION.md). The older results below concern the
 two-task oracle-state baseline; they must not be used as visual-policy scores.
 

@@ -64,6 +64,19 @@ The official SAM source revision is
 
 ## 2. Obtain SAM 3.1 weights once (no login needed)
 
+If you upload the separately prepared `ZAP-AI4S-sam3.1-weights.tar` and its SHA256
+sidecar, use the following commands from the shared parent directory and skip
+the download below:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong &&
+sha256sum -c ZAP-AI4S-sam3.1-weights.tar.sha256 &&
+tar -xf ZAP-AI4S-sam3.1-weights.tar
+```
+
+This creates `ZAP-AI4S-offline-20261106/assets/sam3.1` with the original checkpoint,
+model license and provenance manifest. The archive is separate from code updates.
+
 The default source is the public `facebook/sam3.1` repository on ModelScope:
 https://modelscope.cn/models/facebook/sam3.1 . No ModelScope SDK, login or token
 is needed. The original 3,502,755,717-byte `sam3.1_multiplex.pt` is used, not a
