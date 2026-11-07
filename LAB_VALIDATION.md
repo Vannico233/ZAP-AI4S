@@ -1,5 +1,24 @@
 # Lab validation - 2026-11-07
 
+## User-requested experiment closeout
+
+The current campaign is being stopped; no additional experiment is authorized
+by the closeout helper. Local tests cover output-directory scoping, stale PID
+rejection, parent/child shutdown, unrelated service exclusion, timeout behavior,
+PID identity checks with pidfd, exit-before-signal races, Linux proc stat parsing,
+stage-separated evidence counts, original file preservation, video provenance,
+archive hashes/LF checksums, bounded file/log collection and offline-snapshot
+labeling. Linux process operations are mocked on Windows; no remote GPU process
+has been stopped from this workspace. The helper requires execution on the
+actual GPU instance and reports its observed shutdown scope.
+
+Closeout validation: **12 tests passed**, Python 3.11 syntax and CLI help passed.
+An end-to-end collection of the user's previously downloaded pick evidence
+completed without loading a model or rendering: one available complete episode
+and its existing replay-verified success video were archived, with no files
+skipped. This partial local evidence package is explicitly labeled an offline
+snapshot; its one episode does not replace the full server probe's 9-trial count.
+
 ## Source-audited ZAP pose / reward / prefix correction (v4)
 
 The uploaded v3.1 summary snapshot contained 72 completed new episodes, one task

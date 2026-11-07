@@ -3,7 +3,58 @@
 This is an independently implemented, small-scale ZAP-method reproduction for
 Qwen3.5-4B, not a reproduction of the paper's reported scores. All commands and
 program output are English/ASCII. The original `tube_agent.run` baseline remains
-available. New experiments use `tube_agent.lab`; use the v4 commands below.
+available. The current campaign is being closed out at the user's request.
+The earlier experiment instructions below are retained for reference.
+
+## Stop and archive the current experiment
+
+On the networked **CPU instance**, fetch only the standalone closeout helper.
+This leaves the running experiment's tracked source files unchanged:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git &&
+git fetch origin main &&
+git show origin/main:scripts/close_lab_run.py > close_lab_run.py
+```
+
+On the **GPU instance running the experiment**, execute:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git &&
+.venv-linux/bin/python close_lab_run.py \
+  --stop \
+  --run runs/lab_success_first/seed0_v3_1 \
+  --include runs/lab_pick_debug/seed0_v3
+```
+
+Use the actual active output directory for `--run`. If the later pose probe was
+started, its directory is `runs/lab_pose_probe/seed0_v4`. `--include` is optional:
+it adds an already stopped run for evidence collection and never stops that run.
+The old pick probe is included to retain its existing successful replay video.
+
+The standard-library-only helper matches the pipeline by its exact output
+directory and verifies process identity before SIGTERM; a stale launcher PID
+is never trusted. It waits for the pipeline and identified children to exit,
+then holds the run lock while copying evidence. A timeout or a still-locked run
+is reported without deleting data. Unrelated services, including a separately
+started SAM server, are not stopped. Run this on the GPU host, not the CPU host.
+
+Outputs are printed as `CLOSEOUT`, `ARCHIVE` and `SHA256`:
+
+- `closeouts/lab_closeout_<UTC timestamp>/SUMMARY.md`: per-stage results and video links.
+- `summary.json`: original paths, shutdown scope, errors and existing training evidence.
+- `evidence/`: configurations, job summaries, episode results, selected trajectories,
+  log tails and existing successful model videos with matching replay reports.
+- `MANIFEST.json`: source paths, byte counts and SHA256 hashes for copied evidence.
+- A sibling `.tar.gz` archive and LF-only `.tar.gz.sha256` checksum file.
+
+Original runs, environments and checkpoints remain in place. No sampling,
+training, model loading or video rendering starts. This is a bounded evidence
+archive, not a full checkpoint backup: at most 64 MiB per file (configurable),
+1 GiB total, ten successful trajectories per task per run, first/best failures,
+and the last 2 MiB of each log. Skipped files are listed in `summary.json`.
+Imported successes, search yield and independent trials are counted separately.
+An eligible-result filter is not a claim that the training admission gate passed.
 
 ## ZAP interface correction and bounded diagnosis (v4)
 
