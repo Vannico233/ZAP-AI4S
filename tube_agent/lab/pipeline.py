@@ -17,7 +17,7 @@ from .experiment import (TRAIN_TASK_NAMES,TASK_NAMES,checkpoint,eligible,fingerp
                          rows,successful_results,write_json)
 
 ROOT=Path(__file__).resolve().parents[2]
-PIPELINE_VERSION="lab_success_first_v3"
+PIPELINE_VERSION="lab_success_first_v3_1"
 
 def jobs(tasks,seeds,split,attempts,mode="independent",min_successes=10,attempt_start=0):
     if split=="train" and "rack_transfer" in tasks:raise ValueError("Held-out task cannot enter training")
@@ -207,7 +207,7 @@ def gpu_check(a):
 def make_videos(runner):
     output=runner.output;videos={}
     # Prefer a fresh final-policy evaluation, then other model successes.
-    sources=["final_fixed","final_test","base_test","pick_probe",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
+    sources=["final_fixed","final_test","base_test","pick_probe","imported_probe",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
     for task in TASK_NAMES:
         marker=output/"videos"/(task+".json")
         if marker.exists() and read_json(marker).get("status")=="verified_success":
@@ -264,6 +264,10 @@ def report(output,status,error=None):
 
 def execute_pipeline(runner):
     a=runner.a;out=runner.output
+    if a.success_source:
+        from .import_probe import import_probe
+        imported=import_probe(a.success_source,out/"imported_probe",a.model,a.seed)
+        runner.status("probe_candidates_imported",candidates=imported["candidates"],skipped=imported["skipped"])
     runner.status("preflight",gpus=gpu_check(a))
     if shutil.disk_usage(out).free<30*2**30:raise RuntimeError("At least 30 GiB free disk space is required for trajectories/checkpoints")
     runner.ensure_sam()
@@ -290,7 +294,7 @@ def execute_pipeline(runner):
     # No optimizer steps (including smoke) until acquisition AND qualification pass.
     from .success_gate import inspect_gate, diagnostics, require_gate
     runner.sample("base_fixed",None,jobs(TRAIN_TASK_NAMES,[a.seed],"train",a.fixed_attempts))
-    sources=[out/"base_fixed"]
+    sources=[out/"base_fixed"]+([out/"imported_probe"] if a.success_source else [])
     for round_index in range(a.search_rounds):
         current=inspect_gate(out,sources,out/"qualification",a.seed,a.min_successes,
                              a.qualification_attempts,a.qualification_successes)
@@ -357,6 +361,7 @@ def parser():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output",type=Path,default=Path("runs/lab_success_first/fixed_seed0_v3"));p.add_argument("--model",default=DEFAULT_MODEL)
     p.add_argument("--pick-probe",action="store_true",help="Short pick-only inference experiment; NEVER train")
+    p.add_argument("--success-source",type=Path,help="Completed v3 pick probe; compatible successes are copied and replay-checked")
     p.add_argument("--probe-attempts",type=int,default=4,help="Attempts in each stochastic pick probe shard; plus one greedy trial")
     p.add_argument("--policy-gpus",nargs="+",type=int,default=[0,2,3]);p.add_argument("--sam-gpu",type=int,default=1)
     p.add_argument("--sam-url",default="http://127.0.0.1:8001")
@@ -377,6 +382,7 @@ def parser():
 
 def main():
     p=parser();a=p.parse_args()
+    if a.pick_probe and a.success_source:p.error("A probe cannot import previous successes")
     if len(set(a.policy_gpus))!=len(a.policy_gpus) or a.sam_gpu in a.policy_gpus:p.error("Policy GPU IDs must be unique and exclude SAM GPU")
     if a.group_size<2 or a.group_size%len(a.policy_gpus):p.error("Group size must be >=2 and divisible by policy GPU count")
     if not 0<=a.seed<99997 or any(not 0<=s<100000 for s in a.test_seeds):p.error("Seed out of range")
@@ -399,6 +405,7 @@ def main():
     import fcntl
     from tube_agent.model_utils import resolve_model
     a.output=a.output.resolve();a.model=str(resolve_model(a.model));a.sam_checkpoint=a.sam_checkpoint.resolve()
+    if a.success_source:a.success_source=a.success_source.resolve()
     a.output.mkdir(parents=True,exist_ok=True)
     lock=(a.output/".lock").open("a")
     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)

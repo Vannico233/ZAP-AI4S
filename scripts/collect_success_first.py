@@ -47,6 +47,10 @@ def main():
     for candidates in completed.values():
         independent=[pair for pair in candidates if not pair[1].get("search_prefix_length",0)]
         if independent:episodes.add(independent[0][0])
+        failures=[pair for pair in candidates if not pair[1].get("success")]
+        if failures:episodes.add(failures[0][0])
+        successful=[pair for pair in candidates if pair[1].get("success")]
+        for episode,result in successful[:10]:episodes.add(episode)
         episodes.add(max(candidates,key=lambda pair:(bool(pair[1].get("success")),pair[1].get("reward",-100)))[0])
     diag=root/"acquisition_diagnostics.json"
     if diag.exists():
@@ -56,6 +60,12 @@ def main():
     if gate.exists():
         for records in json.loads(gate.read_text())["approved"].values():
             if records:episodes.add(Path(records[0]["result"]).parent)
+    video_index=root/"videos/index.json"
+    if video_index.exists():
+        for record in json.loads(video_index.read_text(encoding="utf-8")).values():
+            if record.get("status")!="verified_success":continue
+            video=Path(record["video"])
+            add(video);add(video.parent/"report.json");add(video.parent/"poster.jpg")
     for episode in sorted(episodes):
         add(episode/"result.json");add(episode/"trajectory.jsonl")
         trajectory=episode/"trajectory.jsonl"

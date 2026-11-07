@@ -1,5 +1,35 @@
 # Lab validation - 2026-11-07
 
+## Server pick success and Git migration (v3.1, 2026-11-07)
+
+The uploaded completed probe reports 4 successes / 9 episodes, zero errors and
+six invalid actions. Temperature strata: 0 -> 1/1; 0.3 -> 0/4; 0.7 -> 3/4.
+Weights were untrained and no demonstration or prefix was used. This diagnostic
+mixes decoding settings and uses one training scene, so it is not an independent
+held-out success-rate or RL-improvement claim.
+
+The archive contains one full successful trajectory (attempt 200000). Its five
+saved actions replayed locally with all state_matches=true, success=true,
+whole-tube lift 0.0679 m and held=true. All five raw responses were direct JSON;
+there was no prose extraction. Three later observations lacked SAM masks;
+RGB, proprioception and the initial measured reference were still inputs.
+The remaining three successes are supported by server logs, pending independent
+trajectory replay. The improved collector now includes multiple successes,
+a failure and verified videos/replay reports.
+
+v3.1 preserves the v3 policy code and prompt. Compatible completed probe traces
+can be copied into a new acquisition, but only replay-verified, deduplicated
+successes enter its existing gate. Imported episodes never replace fresh
+qualification trials. Incompatible prompts, adapters, models, scene seeds,
+action protocols and changed raw-response/action pairs are rejected/skipped.
+
+Local verification: **150 passed, 1 skipped**; Python 3.11 syntax passed.
+The import path was additionally exercised on the real supplied trajectory:
+one verified pick success, training gate remains false. Shared-runtime linking
+was tested for its complete plan and no-overwrite behavior; actual Linux
+symlinks remain a CPU-instance deployment step. No package reinstall is needed.
+
+
 ## Visual action evidence and focused pick probe (v3, 2026-11-07)
 
 Evidence: the uploaded 08:55:55 UTC archive was captured during acquisition,

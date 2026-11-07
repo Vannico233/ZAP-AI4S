@@ -30,6 +30,62 @@ withdrawal. The nominal hole is 28 mm wide, floor 8 mm, rim 50 mm above the tabl
 The new environment uses a 1 ms timestep and a 2000 N/m finger servo spring;
 these changes do not apply to the old baseline.
 
+## GitHub delivery and reuse of the successful pick probe (v3.1)
+
+The server's v3 pick probe finished 9 independent attempts with 4 successes:
+1/1 at temperature 0, 0/4 at 0.3, and 3/4 at 0.7. This is a mixed-temperature,
+single-scene diagnostic, not a held-out success rate. No training ran. The
+5-step greedy trajectory was independently replayed locally: all five states
+matched and the whole-tube lift was 0.0679 m, with zero invalid/prose actions.
+SAM masks were unavailable in three later observations; RGB, proprioception,
+and the initial visual reference remained available. This is not evidence of
+continuous tracking or generalization. The other three successful trajectories
+were present in server logs but absent from that uploaded archive.
+
+Use a separate Git checkout on the networked CPU instance:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong
+git clone https://github.com/Vannico233/ZAP-AI4S.git ZAP-AI4S-git
+cd ZAP-AI4S-git
+../ZAP-AI4S-offline-20261106/.venv-linux/bin/python scripts/link_shared_runtime.py \
+  --existing ../ZAP-AI4S-offline-20261106
+```
+
+The helper validates all destinations before linking `.venv-linux`, `.venv-sam`,
+`.runtime`, `runs`, and `assets/sam3.1`. It installs/downloads nothing and never
+replaces an existing different destination. KEEP the old offline directory:
+its environments, assets and runs remain the shared storage. The checkout has
+its own tracked source files and Panda assets. `offline_bundle.py verify` is for
+the archived offline distribution, not for this Git checkout.
+
+On later updates, when no experiment is running, use `git pull --ff-only` in
+`ZAP-AI4S-git` on the CPU instance. On the GPU instance, use that same checkout:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git
+bash scripts/start_lab_all.sh runs/lab_success_first/seed0_v3_1 \
+  --sam-url http://127.0.0.1:8002 \
+  --success-source runs/lab_pick_debug/seed0_v3
+```
+
+The visual policy/prompt is unchanged from v3. Compatible completed probe
+successes are copied into the new run. Model, seed, prompt, environment/action
+versions, raw-response/action consistency and provenance are checked. Only
+subsequent successful physical replay and deduplication admit them to the gate;
+`IMPORT.json` candidate count alone is not an admission count. Probe trials
+cannot substitute for the 10 fresh qualification trials. All four tasks still
+need 10 unique verified successes each and at least 3/10 fresh successes per
+task before any optimizer step. No manual diagnosis enters the training set.
+
+The collector now includes up to 10 successful episodes per task, an independent
+failure if available, and verified videos/replay reports rather than only an
+index. To collect this new run:
+
+```bash
+.venv-linux/bin/python scripts/collect_success_first.py --run runs/lab_success_first/seed0_v3_1
+```
+
 ## Focused pick debugging (v3, 2026-11-07)
 
 The v2 review archive was captured mid-search: 74 completed episodes, zero

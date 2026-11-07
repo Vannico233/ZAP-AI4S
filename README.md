@@ -8,9 +8,10 @@ SAM weights download anonymously from ModelScope with checksum verification.
 See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 checks.
 This is a scaled method reproduction, not a claim to the paper's benchmark scores.
 
-**Current debugging step:** use `--pick-probe` with a fresh output such as
-`runs/lab_pick_debug/seed0_v3`. This runs 9 independent pick episodes and can
-NEVER train. See [LAB_GUIDE.md](LAB_GUIDE.md) for the exact command and protocol changes.
+**Latest server result:** the v3 fixed-scene pick probe completed with 4/9
+successes and no training. One supplied success was independently replayed with
+all states matching. See [LAB_GUIDE.md](LAB_GUIDE.md) for the new Git checkout,
+shared-runtime links, and `--success-source` reuse with mandatory replay checks.
 
 **Four-H100 automatic experiment:** after applying the offline auto-pipeline
 patch, run `bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v3`
