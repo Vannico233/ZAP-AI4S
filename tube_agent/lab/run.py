@@ -11,7 +11,7 @@ import time
 import numpy as np
 from tube_agent.run import summarize
 from .env import LabEnv,TASKS
-from .policy import HttpGenerator,VisualPolicy,execute,SYSTEM
+from .policy import HttpGenerator,VisualPolicy,execute,SYSTEM,POLICY_VERSION
 from .vision import Observer,SamClient,PERCEPTION_VERSION
 from .experiment import write_json
 
@@ -31,6 +31,9 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
             if feedback!=saved["feedback"] or not np.allclose(state(env),saved["state_after"],atol=1e-9,rtol=0):
                 raise RuntimeError("Prefix replay diverged; refusing to continue from a different state")
             policy.history=copy.deepcopy(saved["history_after"])
+            policy.remember(saved["action"],feedback,saved["step"])
+            if "initial_visual_reference" in saved:
+                policy.initial_visual_reference=copy.deepcopy(saved["initial_visual_reference"])
             records.append(copy.deepcopy(saved))
         with (directory/"trajectory.jsonl").open("w",encoding="utf-8") as log:
             for row in records:log.write(json.dumps(row)+"\n")
@@ -38,10 +41,14 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                 observation,images=observer.observe(directory/f"view_{env.steps:03d}" if save_frames else None)
                 action,raw,messages=policy.act(env.instruction,observation,images,feedback,env.steps)
                 feedback=execute(env,observer,policy,action)
+                policy.remember(action,feedback,env.steps)
                 row={"step":env.steps,"action":action,"raw_response":raw,"messages":messages,
                      "feedback":feedback,"state_after":state(env),"history_after":copy.deepcopy(policy.history),
                      "judge_after":env.result(),"origin_attempt":attempt}
                 row["perception"]=copy.deepcopy(observer.last_audit)
+                row["response_format"]=copy.deepcopy(policy.last_parse)
+                row["initial_visual_reference"]=copy.deepcopy(policy.initial_visual_reference)
+                row["camera_calibration"]=copy.deepcopy(observation.get("cameras",[]))
                 if hasattr(generator,"last_response_ids"):
                     row["response_ids"]=list(generator.last_response_ids)
                 records.append(row);log.write(json.dumps(row)+"\n");log.flush()
@@ -61,6 +68,9 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                   observation_mode="rgbd_sam3.1_detector",environment_version=LabEnv.VERSION,
                   action_protocol=LabEnv.ACTION_PROTOCOL,
                   perception_version=PERCEPTION_VERSION,
+                  policy_version=POLICY_VERSION,
+                  leading_prose_responses=sum(r.get("response_format",{}).get("mode")=="leading_prose" for r in records),
+                  parse_failures=sum(r.get("response_format",{}).get("mode")=="invalid" for r in records),
                   missing_detection_observations=sum(bool(r.get("perception",{}).get("missing_queries")) for r in records),
                   prompt_sha256=hashlib.sha256(SYSTEM.encode()).hexdigest(),demonstration=None,
                   max_steps=max_steps,search_prefix_length=len(prefix or []),error=error,seconds=round(time.monotonic()-started,2))

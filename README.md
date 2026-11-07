@@ -8,8 +8,12 @@ SAM weights download anonymously from ModelScope with checksum verification.
 See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 checks.
 This is a scaled method reproduction, not a claim to the paper's benchmark scores.
 
+**Current debugging step:** use `--pick-probe` with a fresh output such as
+`runs/lab_pick_debug/seed0_v3`. This runs 9 independent pick episodes and can
+NEVER train. See [LAB_GUIDE.md](LAB_GUIDE.md) for the exact command and protocol changes.
+
 **Four-H100 automatic experiment:** after applying the offline auto-pipeline
-patch, run `bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v2`
+patch, run `bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v3`
 on the GPU instance. SAM runs on GPU 1; GPUs 0, 2, 3 sample and later train one
 shared policy. **No optimizer updates before success admission:** each task
 needs 10 unique, physically replay-verified visual successes and at least 3/10

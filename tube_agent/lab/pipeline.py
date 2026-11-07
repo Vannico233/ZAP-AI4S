@@ -17,7 +17,7 @@ from .experiment import (TRAIN_TASK_NAMES,TASK_NAMES,checkpoint,eligible,fingerp
                          rows,successful_results,write_json)
 
 ROOT=Path(__file__).resolve().parents[2]
-PIPELINE_VERSION="lab_success_first_v2"
+PIPELINE_VERSION="lab_success_first_v3"
 
 def jobs(tasks,seeds,split,attempts,mode="independent",min_successes=10,attempt_start=0):
     if split=="train" and "rack_transfer" in tasks:raise ValueError("Held-out task cannot enter training")
@@ -207,7 +207,7 @@ def gpu_check(a):
 def make_videos(runner):
     output=runner.output;videos={}
     # Prefer a fresh final-policy evaluation, then other model successes.
-    sources=["final_fixed","final_test","base_test",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
+    sources=["final_fixed","final_test","base_test","pick_probe",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
     for task in TASK_NAMES:
         marker=output/"videos"/(task+".json")
         if marker.exists() and read_json(marker).get("status")=="verified_success":
@@ -240,7 +240,7 @@ def report(output,status,error=None):
     output=Path(output)
     value={"status":status,"error":error,"pipeline_version":PIPELINE_VERSION,
            "selection":read_json(output/"selection.json") if (output/"selection.json").exists() else None,
-           "base_fixed":summaries(output/"base_fixed"),"final_fixed":summaries(output/"final_fixed"),
+           "pick_probe":summaries(output/"pick_probe"),"base_fixed":summaries(output/"base_fixed"),"final_fixed":summaries(output/"final_fixed"),
            "base_test":summaries(output/"base_test"),"final_test":summaries(output/"final_test"),
            "videos":read_json(output/"videos/index.json") if (output/"videos/index.json").exists() else {}}
     value["success_gate"]=read_json(output/"success_gate.json") if (output/"success_gate.json").exists() else None
@@ -271,6 +271,22 @@ def execute_pipeline(runner):
     stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     runner.step("render_check",[sys.executable,"scripts/check_render.py","--output",str(out/"preflight"/stamp/"render")],[a.policy_gpus[0]])
     runner.step("physics_cameras",[sys.executable,"-m","tube_agent.lab.doctor","--output",str(out/"preflight"/stamp/"physics")],[a.policy_gpus[0]])
+    if a.pick_probe:
+        # A short independent pick-only debugging experiment, never training.
+        probe_jobs=[]
+        for shard,temperature in enumerate((0.,.3,.7)):
+            job=jobs(["pick"],[a.seed],"train",1 if shard==0 else a.probe_attempts,
+                     attempt_start=200000+shard*1000)[0]
+            job.update(id=f"pick_probe_{shard}",temperature=temperature)
+            probe_jobs.append(job)
+        runner.sample("pick_probe",None,probe_jobs)
+        from .success_gate import diagnostics
+        diagnostics(out,[out/"pick_probe"],a.seed)
+        make_videos(runner)
+        report(out,"probe_complete")
+        runner.status("probe_complete",training_started=False,tasks=summaries(out/"pick_probe"),
+                      message="Independent pick diagnostic only; inspect trajectories before full acquisition")
+        return
     # No optimizer steps (including smoke) until acquisition AND qualification pass.
     from .success_gate import inspect_gate, diagnostics, require_gate
     runner.sample("base_fixed",None,jobs(TRAIN_TASK_NAMES,[a.seed],"train",a.fixed_attempts))
@@ -339,7 +355,9 @@ def execute_pipeline(runner):
 def parser():
     from tube_agent.model_utils import DEFAULT_MODEL
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output",type=Path,default=Path("runs/lab_success_first/fixed_seed0_v2"));p.add_argument("--model",default=DEFAULT_MODEL)
+    p.add_argument("--output",type=Path,default=Path("runs/lab_success_first/fixed_seed0_v3"));p.add_argument("--model",default=DEFAULT_MODEL)
+    p.add_argument("--pick-probe",action="store_true",help="Short pick-only inference experiment; NEVER train")
+    p.add_argument("--probe-attempts",type=int,default=4,help="Attempts in each stochastic pick probe shard; plus one greedy trial")
     p.add_argument("--policy-gpus",nargs="+",type=int,default=[0,2,3]);p.add_argument("--sam-gpu",type=int,default=1)
     p.add_argument("--sam-url",default="http://127.0.0.1:8001")
     p.add_argument("--sam-checkpoint",type=Path,default=ROOT/"assets/sam3.1/sam3.1_multiplex.pt")
@@ -364,12 +382,14 @@ def main():
     if not 0<=a.seed<99997 or any(not 0<=s<100000 for s in a.test_seeds):p.error("Seed out of range")
     if any(getattr(a,k)<1 for k in ("max_steps","search_attempts","min_successes","search_rounds","qualification_attempts","qualification_successes","fixed_updates","diverse_updates","sft_epochs","fixed_attempts","validation_attempts","test_attempts","cpu_threads")):p.error("Budgets must be positive")
     if a.qualification_successes>a.qualification_attempts:p.error("Qualification successes exceed attempts")
+    if a.probe_attempts<1 or a.probe_attempts>=1000:p.error("probe-attempts must be in [1,999]")
     if a.search_rounds*a.search_attempts>=99000:p.error("Acquisition RNG range would overlap qualification")
     budget={"base_and_final_fixed":8*a.fixed_attempts,"search_max":4*a.search_attempts*a.search_rounds,
             "qualification":4*a.qualification_attempts,
             "rl_max":(a.fixed_updates+a.diverse_updates)*a.group_size,
             "validation_max":4*4*2*a.validation_attempts,"base_and_final_test":2*5*len(a.test_seeds)*a.test_attempts,
             "training_smoke":len(a.policy_gpus)}
+    if a.pick_probe:budget={"independent_pick_probes":1+2*a.probe_attempts,"training":0}
     if a.plan:
         print(json.dumps({"version":PIPELINE_VERSION,"policy_gpus":a.policy_gpus,"sam_gpu":a.sam_gpu,
                           "episode_budgets":budget,"max_total_episodes":sum(budget.values()),

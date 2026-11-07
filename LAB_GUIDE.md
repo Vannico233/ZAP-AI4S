@@ -30,7 +30,56 @@ withdrawal. The nominal hole is 28 mm wide, floor 8 mm, rim 50 mm above the tabl
 The new environment uses a 1 ms timestep and a 2000 N/m finger servo spring;
 these changes do not apply to the old baseline.
 
-## Success-first four-GPU experiment (v2, 2026-11-07)
+## Focused pick debugging (v3, 2026-11-07)
+
+The v2 review archive was captured mid-search: 74 completed episodes, zero
+full successes. The first pick trace moved upward without closing the gripper
+until step 36. Its raw prose claimed a grasp that had not occurred. Three
+provided invalid responses contained a single complete JSON action after prose.
+
+Changes in v3:
+
+- Accept a SINGLE trailing JSON action after explanatory prose, keeping the raw
+  response and parse audit. Reject arrays, multiple alternatives, duplicate keys,
+  trailing prose, truncated objects and non-finite JSON constants. Never invent
+  coordinates, gripper commands or a missing field. The old strict baseline
+  parser is unchanged. This changes the visual output parsing protocol.
+- Feed canonical actions back into history, not unsupported assistant claims.
+  Include executed action/feedback history and a frozen initial VISUAL reference.
+  Robot opening is explicitly interpreted as an uncertain grasp cue; neither
+  simulator contacts nor ground-truth held/success flags enter the policy.
+- Retain camera calibration in trajectory audits while omitting full matrices
+  from the model decision text; object measurements already use world coordinates.
+- Collector selects failed episodes and their images even before stage-level
+  diagnostics exist, and includes the launcher log.
+
+Start with a small pick-only probe AFTER the old run has ended:
+
+```bash
+bash scripts/start_lab_all.sh runs/lab_pick_debug/seed0_v3 \
+  --pick-probe --sam-url http://127.0.0.1:8002
+```
+
+Nine independent base-model episodes, fixed train seed 0: one greedy trial on
+GPU 0, four trials at temperature 0.3 on GPU 2, four at 0.7 on GPU 3; managed SAM
+on GPU 1. No prefix search, optimizer smoke, SFT or RL. Even if all nine succeed,
+the probe cannot train. It ends at `probe_complete`, with summaries, candidate
+trajectories and verified success videos if available. Probe successes are not
+automatically imported into the full four-task gate.
+
+```bash
+cat runs/lab_pick_debug/seed0_v3/status.json
+.venv-linux/bin/python scripts/collect_success_first.py --run runs/lab_pick_debug/seed0_v3
+```
+
+Local evidence: replaying the server's first pick actions reproduced all final
+reported physical metrics (failure). A separately labelled manual five-action
+diagnostic using ONLY the supplied initial SAM position/axis estimates succeeded.
+This demonstrates geometric/actuation feasibility for that initial scene only;
+it is NOT a model success or training example. Actual v3 Qwen/SAM success rates
+must be measured on the GPU server.
+
+## Success-first four-GPU experiment (v3, 2026-11-07)
 
 The old v1 flow incorrectly allowed warm-up and fixed-scene RL with ZERO
 successes. Do not resume that flow. Use a NEW output directory with this patch;
@@ -39,7 +88,7 @@ old evidence and checkpoints remain untouched. No new packages or weights.
 Run on the GPU instance, from the project directory:
 
 ```bash
-bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v2
+bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v3
 ```
 
 GPU 1 hosts managed SAM; GPUs 0, 2, 3 host base-model policy replicas for
@@ -91,9 +140,9 @@ a hidden controller. Its effect on Qwen success rates has NOT been measured
 locally. The base policy for this release differs from the previous prompt.
 
 ```bash
-cat runs/lab_success_first/fixed_seed0_v2/status.json
-cat runs/lab_success_first/fixed_seed0_v2/success_gate.json
-tail -n 30 runs/lab_success_first/fixed_seed0_v2/launcher.log
+cat runs/lab_success_first/fixed_seed0_v3/status.json
+cat runs/lab_success_first/fixed_seed0_v3/success_gate.json
+tail -n 30 runs/lab_success_first/fixed_seed0_v3/launcher.log
 .venv-linux/bin/python scripts/collect_success_first.py
 ```
 

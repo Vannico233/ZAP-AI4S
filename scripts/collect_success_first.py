@@ -24,12 +24,30 @@ def main():
     for name in ("config.json","status.json","report.json","success_gate.json","gate_replays.json",
                  "sam_health.json","acquisition_diagnostics.json","videos/index.json"):
         add(root/name)
+    launcher=root/"launcher.log"
+    if launcher.is_file():
+        with launcher.open("rb") as f:
+            f.seek(max(0,launcher.stat().st_size-2**20));files["launcher.log"]=f.read()
     for path in root.rglob("summary.json"):add(path)
     # Last 1 MiB of each log preserves errors without embedding all action logs.
     for path in (root/"logs").glob("*.log"):
         with path.open("rb") as f:
             f.seek(max(0,path.stat().st_size-2**20));files["logs/"+path.name]=f.read()
     episodes=set()
+    # Work even while sampling is running, before gate/diagnostics are written.
+    # Pick an initial independent failure and the best completed episode per
+    # task. Do not let a gate with zero successes produce a log-only archive.
+    completed={}
+    for result_path in sorted(root.rglob("result.json")):
+        if any(".incomplete-" in part for part in result_path.parts):continue
+        try:result=json.loads(result_path.read_text(encoding="utf-8"))
+        except (ValueError,OSError):continue
+        if result.get("policy")!="model" or result.get("error"):continue
+        completed.setdefault(result.get("task"),[]).append((result_path.parent,result))
+    for candidates in completed.values():
+        independent=[pair for pair in candidates if not pair[1].get("search_prefix_length",0)]
+        if independent:episodes.add(independent[0][0])
+        episodes.add(max(candidates,key=lambda pair:(bool(pair[1].get("success")),pair[1].get("reward",-100)))[0])
     diag=root/"acquisition_diagnostics.json"
     if diag.exists():
         for item in json.loads(diag.read_text()).values():
@@ -42,19 +60,29 @@ def main():
         add(episode/"result.json");add(episode/"trajectory.jsonl")
         trajectory=episode/"trajectory.jsonl"
         if not trajectory.is_file():continue
+        # At most first, first invalid, first gripper command and final view.
+        selected={};last=None
         with trajectory.open(encoding="utf-8") as f:
-            first=next((json.loads(line) for line in f if line.strip()),None)
-        if first:
+            for line in f:
+                if not line.strip():continue
+                try:row=json.loads(line)
+                except ValueError:continue
+                selected.setdefault("first",row);last=row
+                if row.get("feedback",{}).get("accepted") is False:selected.setdefault("invalid",row)
+                if row.get("action",{}).get("action")=="gripper":selected.setdefault("gripper",row)
+        if last:selected["last"]=last
+        for label,row in selected.items():
             number=0
-            for message in first.get("messages",[]):
+            for message in row.get("messages",[]):
                 content=message.get("content")
                 for part in content if isinstance(content,list) else []:
                     if part.get("type")=="image_url":
                         url=part["image_url"]["url"]
                         if url.startswith("data:image/png;base64,") and episode.resolve().is_relative_to(root):
-                            files[episode.resolve().relative_to(root).as_posix()+f"/initial_{number}.png"]=base64.b64decode(url.split(",",1)[1])
+                            files[episode.resolve().relative_to(root).as_posix()+f"/{label}_{number}.png"]=base64.b64decode(url.split(",",1)[1])
                             number+=1
-    files["COLLECTION.json"]=json.dumps({"run":str(root),"skipped_large_files":skipped},indent=2).encode()
+    files["COLLECTION.json"]=json.dumps({"run":str(root),"selected_episodes":len(episodes),
+                                       "skipped_large_files":skipped},indent=2).encode()
     with tarfile.open(target,"w:gz") as tar:
         for name,data in sorted(files.items()):
             member=tarfile.TarInfo(name);member.size=len(data);tar.addfile(member,io.BytesIO(data))

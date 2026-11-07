@@ -1,9 +1,34 @@
 """Image-grounded tools. No demonstrations, oracle state, or hidden fallback."""
 import copy
 import json
+import re
 import httpx
-from tube_agent.policy import parse_action
 from .vision import image_url
+
+POLICY_VERSION = "visual_action_evidence_v3"
+
+
+def parse_visual_action(raw):
+    """Accept exactly one trailing JSON object; never choose among alternatives."""
+    clean = re.sub(r"<think>.*?</think>", "", raw, flags=re.S).strip()
+    if clean.startswith("```") and clean.endswith("```"):
+        clean = re.sub(r"^```(?:json)?\s*|\s*```$", "", clean).strip()
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value: raise ValueError("Duplicate JSON key")
+            value[key] = item
+        return value
+    def constant(value): raise ValueError("Non-finite JSON number")
+    decoder = json.JSONDecoder(object_pairs_hook=pairs, parse_constant=constant)
+    start = clean.find("{")
+    if start < 0 or any(c in clean[:start] for c in "{}[]"):
+        raise ValueError("Expected one unambiguous JSON action")
+    action, end = decoder.raw_decode(clean[start:])
+    if not isinstance(action, dict) or clean[start+end:].strip():
+        raise ValueError("Multiple actions, trailing prose or truncated JSON")
+    return action, {"version": "single_trailing_json_v1", "mode": "json" if start==0 else "leading_prose",
+                    "leading_characters": start}
 
 SYSTEM = """You operate a Franka Panda gripper in a laboratory simulation.
 Return exactly one JSON action per turn, with no prose or markdown:
@@ -47,6 +72,17 @@ revise the waypoint or orientation instead of repeating the same failed pose.
 Opening changes do not attach an object. Check subsequent images for motion.
 Lift with a margin beyond the task's minimum, then verify the object follows.
 Submit finish when the requested task is complete. Steps_left is your remaining budget.
+Never describe a grasp as established merely because TCP z increased.
+The robot starts with OPEN fingers. A move NEVER closes the fingers.
+After positioning around the tube, issue gripper opening 0 BEFORE attempting a lift.
+If opening is still near .08, do not claim the tube is held. If opening becomes
+nearly zero, the fingers may have closed on empty space: inspect both images.
+Use the recorded initial visual reference for the starting support height;
+do not repeatedly add 6 cm to the current TCP or current object height.
+For pick, lift once with clearance, inspect whether the tube moved with the hand,
+then finish while keeping the fingers closed. Do not keep raising an empty hand.
+Action_history is executed command feedback, not a demonstration. Treat your
+previous prose as unverified; current images and measurements take precedence.
 """
 
 class HttpGenerator:
@@ -68,17 +104,36 @@ class VisualPolicy:
     def __init__(self,generator,temperature=.8,seed=0):
         self.generator,self.temperature,self.seed=generator,temperature,seed
         self.history=[];self.plan=""
+        self.action_memory=[];self.initial_visual_reference=None;self.last_parse=None
+    def remember(self,action,feedback,step):
+        self.action_memory.append({"step":step,"action":copy.deepcopy(action),
+                                   "feedback":copy.deepcopy(feedback)})
     def act(self,instruction,observation,images,feedback,step):
-        content=json.dumps({"instruction":instruction,"observation":observation,
+        if self.initial_visual_reference is None:
+            self.initial_visual_reference=copy.deepcopy(observation.get("detections",[]))
+        # Object measurements are already in world coordinates. Full camera
+        # matrices stay in trajectory audits, not mixed into the decision text.
+        policy_observation={k:v for k,v in observation.items() if k!="cameras"}
+        opening=observation.get("gripper_opening",0.08)
+        fingers=("wide_open_not_grasp_evidence" if opening>=.06 else
+                 "nearly_closed_may_be_empty" if opening<=.003 else "partial_opening_not_proof_of_grasp")
+        content=json.dumps({"instruction":instruction,"observation":policy_observation,
+                            "initial_visual_reference":self.initial_visual_reference,
+                            "gripper_interpretation":fingers,"action_history":self.action_memory,
                             "last_action_feedback":feedback,"remaining_plan":self.plan})
         messages=[{"role":"system","content":SYSTEM}]+copy.deepcopy(self.history[-4:])
         messages.append({"role":"user","content":[{"type":"text","text":content}]+
                          [{"type":"image_url","image_url":{"url":image_url(i)}} for i in images]})
         raw=self.generator(messages,self.seed+step*100003,self.temperature)
         if not isinstance(raw,str):raise ValueError("Model response must be text")
-        self.history.extend([{"role":"user","content":content},{"role":"assistant","content":raw}])
-        try:action=parse_action(raw)
-        except (ValueError,TypeError):action={"action":"invalid_model_output"}
+        try:action,self.last_parse=parse_visual_action(raw)
+        except (ValueError,TypeError) as exc:
+            action={"action":"invalid_model_output"}
+            self.last_parse={"version":"single_trailing_json_v1","mode":"invalid","reason":str(exc)}
+        # Keep the original output in raw_response/response_ids for auditing and
+        # likelihood training; do not feed hallucinated prose back as fact.
+        self.history.extend([{"role":"user","content":json.dumps({"instruction":instruction,"step":step})},
+                             {"role":"assistant","content":json.dumps(action)}])
         return action,raw,messages
 
 def execute(env,observer,policy,action):

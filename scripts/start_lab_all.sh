@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-OUTPUT="${1:-runs/lab_success_first/fixed_seed0_v2}"
+OUTPUT="${1:-runs/lab_success_first/fixed_seed0_v3}"
 if [[ $# -gt 0 ]]; then shift; fi
 mkdir -p "$OUTPUT"
 OUTPUT="$(cd "$OUTPUT" && pwd)"

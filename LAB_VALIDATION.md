@@ -1,5 +1,35 @@
 # Lab validation - 2026-11-07
 
+## Visual action evidence and focused pick probe (v3, 2026-11-07)
+
+Evidence: the uploaded 08:55:55 UTC archive was captured during acquisition,
+contained 74 completed episode log records and no full successes. The collector
+had omitted trajectories because its stage-level diagnostic index was not yet
+written. This collector dependency is removed.
+
+The user supplied the first input and three raw invalid responses from pick
+attempt 0. All three contained one complete action after explanatory prose.
+The recorded first episode did not close the gripper until step 36, but its
+prose asserted a grasp. Replaying all saved actions locally reproduced every
+reported final physical metric. A separate MANUAL five-action sequence using
+only supplied initial SAM center/axis measurements achieved a 0.1644 m lift;
+it is an execution diagnostic, not Qwen exploration or SFT training evidence.
+
+Parser v3 accepts exactly one complete trailing JSON object, records the original
+text, rejects ambiguous/multiple/truncated/duplicate-key outputs, and does not
+repair coordinates or supply missing fields. History retains canonical actions
+and executed feedback, plus a fixed initial visual reference. Current opening
+is an explicitly uncertain cue, never an oracle grasp flag. Per-episode
+`leading_prose_responses` and `parse_failures` expose extraction frequency.
+
+Local regression: **139 passed, 1 skipped** (Windows distributed transport),
+including parser boundaries, history/reference integrity, collection during a
+failed running experiment, no-training probe mode, and prior gate/physics/LoRA
+checks. A separate episode smoke verified raw text preservation and the new
+parse counters. Python 3.11 syntax validation passed. Native SAM/4B/H100 gains
+are not claimed; the next run is nine independent pick episodes, no training.
+
+
 ## Success-first correction (2026-11-07, supersedes v1 scheduling)
 
 The prior automatic pipeline violated the requested acquisition-before-training
