@@ -7,6 +7,7 @@ import argparse
 from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
+import errno
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ TASKS = ("pick", "transport", "insert", "unscrew", "rack_transfer")
 MODULES = {"tube_agent.lab.pipeline", "tube_agent.lab.worker",
            "tube_agent.lab.distributed_train", "tube_agent.lab.run",
            "tube_agent.lab.replay", "tube_agent.lab.doctor", "tube_agent.lab.zap_check"}
+PIDFD_UNAVAILABLE = {errno.ENOSYS, errno.EINVAL, errno.EPERM, errno.EACCES, errno.ENOTSUP}
 
 
 def read_json(path, default=None):
@@ -95,20 +97,46 @@ def same_process(left, right):
     return right is not None and all(left[k] == right[k] for k in ("pid", "start", "args"))
 
 
+def checked_sigterm(process, reason):
+    """Portable Unix fallback: recheck identity immediately before ordinary kill.
+
+    Unlike pidfd, the check and signal are not atomic. Keep them adjacent and
+    never use a cached PID without this fresh same-user /proc identity check.
+    """
+    if not same_process(process, read_process(process["pid"])): return False
+    try:
+        os.kill(process["pid"], signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    print("STOP_SIGNAL:", json.dumps({"pid":process["pid"], "signal":"SIGTERM",
+          "backend":"checked_kill", "reason":reason}), flush=True)
+    return True
+
+
 def terminate_identified(process):
-    """A pidfd binds the signal to the process identity, protecting PID reuse."""
-    if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
-        raise RuntimeError("Stopping requires Linux pidfd support (available on the supplied Ubuntu/Python 3.11 host)")
+    """Prefer pidfd; support Python builds or containers without usable pidfd."""
+    if not callable(getattr(os, "pidfd_open", None)) or not callable(getattr(signal, "pidfd_send_signal", None)):
+        return checked_sigterm(process, "Python pidfd API unavailable")
     try:
         fd = os.pidfd_open(process["pid"])
     except ProcessLookupError:
         return False
+    except OSError as error:
+        if error.errno in PIDFD_UNAVAILABLE:
+            return checked_sigterm(process, f"pidfd_open unavailable: errno={error.errno}")
+        raise
     try:
         if not same_process(process, read_process(process["pid"])): return False
         try:
             signal.pidfd_send_signal(fd, signal.SIGTERM)
         except ProcessLookupError:
             return False  # The checked process may have exited just before signalling.
+        except OSError as error:
+            if error.errno in PIDFD_UNAVAILABLE:
+                return checked_sigterm(process, f"pidfd_send_signal unavailable: errno={error.errno}")
+            raise
+        print("STOP_SIGNAL:", json.dumps({"pid":process["pid"], "signal":"SIGTERM",
+              "backend":"pidfd"}), flush=True)
         return True
     finally:
         os.close(fd)

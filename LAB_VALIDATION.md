@@ -2,6 +2,23 @@
 
 ## User-requested experiment closeout
 
+Server correction: the original helper stopped at its pidfd capability check
+before sending any signal. The server's Python does not expose at least one of
+`os.pidfd_open` and `signal.pidfd_send_signal`; the previous assumption that the
+reported Ubuntu/Python versions guaranteed those APIs was incorrect. Python's
+[os documentation](https://docs.python.org/3.11/library/os.html#os.pidfd_open)
+and [signal documentation](https://docs.python.org/3.11/library/signal.html#signal.pidfd_send_signal)
+describe platform-dependent availability. No environment reinstall is needed.
+
+The helper now uses an immediately identity-checked ordinary SIGTERM fallback
+for missing APIs or supported capability errors; it logs the chosen backend.
+**32 closeout tests passed** after this correction, including absence of either
+or both APIs, unavailable/blocked pidfd calls, rechecking after a failed pidfd
+call, stale/changed/exited processes, cleanup and exact-run shutdown. Unrelated
+resource errors remain visible. Process syscalls are still simulated locally
+on Windows; native execution on the user's GPU host has not been observed.
+The fallback does not claim pidfd's atomic protection against PID reuse.
+
 The current campaign is being stopped; no additional experiment is authorized
 by the closeout helper. Local tests cover output-directory scoping, stale PID
 rejection, parent/child shutdown, unrelated service exclusion, timeout behavior,

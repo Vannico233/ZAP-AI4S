@@ -1,4 +1,5 @@
 import hashlib
+import errno
 import importlib.util
 import json
 from pathlib import Path
@@ -83,6 +84,89 @@ def test_process_exiting_before_signal_is_harmless(tmp_path,monkeypatch):
     monkeypatch.setattr(close.os,"close",lambda fd:closed.append(fd))
     monkeypatch.setattr(close,"read_process",lambda pid:original)
     assert close.terminate_identified(original) is False and closed==[99]
+
+
+@pytest.mark.parametrize("missing", ["open", "send", "both"])
+def test_missing_pidfd_api_uses_identity_checked_sigterm(tmp_path,monkeypatch,capsys,missing):
+    original=process(7,tmp_path);events=[]
+    monkeypatch.setattr(close.os,"pidfd_open",lambda pid:pytest.fail("Partial pidfd API must not be used"),raising=False)
+    monkeypatch.setattr(close.signal,"pidfd_send_signal",lambda *args:pytest.fail("Partial pidfd API must not be used"),raising=False)
+    if missing in ("open","both"):monkeypatch.delattr(close.os,"pidfd_open")
+    if missing in ("send","both"):monkeypatch.delattr(close.signal,"pidfd_send_signal")
+    monkeypatch.setattr(close,"read_process",lambda pid:events.append("identity") or original)
+    monkeypatch.setattr(close.os,"kill",lambda pid,sig:events.append((pid,sig)))
+    assert close.terminate_identified(original) is True
+    assert events==["identity",(7,close.signal.SIGTERM)]
+    assert '"backend": "checked_kill"' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("current", [None,"changed_start","changed_args"])
+def test_fallback_refuses_exited_or_changed_process(tmp_path,monkeypatch,current):
+    original=process(7,tmp_path)
+    observed=None if current is None else {**original,
+        **({"start":"new"} if current=="changed_start" else {"args":["python","unrelated.py"]})}
+    monkeypatch.delattr(close.os,"pidfd_open",raising=False)
+    monkeypatch.setattr(close,"read_process",lambda pid:observed)
+    monkeypatch.setattr(close.os,"kill",lambda *args:pytest.fail("Changed process must not be signalled"))
+    assert close.terminate_identified(original) is False
+
+
+@pytest.mark.parametrize("operation", ["open","send"])
+@pytest.mark.parametrize("error_number", [errno.ENOSYS,errno.EPERM,errno.EACCES,errno.EINVAL,errno.ENOTSUP])
+def test_pidfd_runtime_unavailability_falls_back(tmp_path,monkeypatch,operation,error_number):
+    original=process(7,tmp_path);sent=[];closed=[];checks=[]
+    def unavailable(*args):raise OSError(error_number,"pidfd unavailable")
+    monkeypatch.setattr(close.os,"pidfd_open",unavailable if operation=="open" else lambda pid:99,raising=False)
+    monkeypatch.setattr(close.signal,"pidfd_send_signal",unavailable,raising=False)
+    monkeypatch.setattr(close.os,"close",lambda fd:closed.append(fd))
+    monkeypatch.setattr(close,"read_process",lambda pid:checks.append(pid) or original)
+    monkeypatch.setattr(close.os,"kill",lambda pid,sig:sent.append((pid,sig)))
+    assert close.terminate_identified(original) is True
+    assert sent==[(7,close.signal.SIGTERM)]
+    assert closed==([] if operation=="open" else [99])
+    assert len(checks)==(1 if operation=="open" else 2)
+
+
+def test_fallback_rechecks_after_pidfd_error(tmp_path,monkeypatch):
+    original=process(7,tmp_path);observations=iter([original,{**original,"start":"new"}]);closed=[]
+    def unavailable(*args):raise OSError(errno.ENOSYS,"not supported")
+    monkeypatch.setattr(close.os,"pidfd_open",lambda pid:99,raising=False)
+    monkeypatch.setattr(close.signal,"pidfd_send_signal",unavailable,raising=False)
+    monkeypatch.setattr(close.os,"close",lambda fd:closed.append(fd))
+    monkeypatch.setattr(close,"read_process",lambda pid:next(observations))
+    monkeypatch.setattr(close.os,"kill",lambda *args:pytest.fail("Changed process must not be signalled"))
+    assert close.terminate_identified(original) is False and closed==[99]
+
+
+def test_fallback_handles_exit_before_signal(tmp_path,monkeypatch):
+    original=process(7,tmp_path)
+    def gone(*args):raise ProcessLookupError()
+    monkeypatch.delattr(close.os,"pidfd_open",raising=False)
+    monkeypatch.setattr(close,"read_process",lambda pid:original)
+    monkeypatch.setattr(close.os,"kill",gone)
+    assert close.terminate_identified(original) is False
+
+
+def test_pidfd_resource_error_is_not_hidden_by_fallback(tmp_path,monkeypatch):
+    def exhausted(*args):raise OSError(errno.EMFILE,"too many open files")
+    monkeypatch.setattr(close.os,"pidfd_open",exhausted,raising=False)
+    monkeypatch.setattr(close.signal,"pidfd_send_signal",lambda *args:None,raising=False)
+    monkeypatch.setattr(close.os,"kill",lambda *args:pytest.fail("Resource error must remain visible"))
+    with pytest.raises(OSError) as error:close.terminate_identified(process(7,tmp_path))
+    assert error.value.errno==errno.EMFILE
+
+
+def test_stop_without_pidfd_completes_existing_pipeline_shutdown(tmp_path,monkeypatch):
+    parent=process(51,tmp_path);other=process(53,tmp_path/"other");snapshots=iter([{51:parent,53:other},{53:other}]);sent=[]
+    monkeypatch.setattr(close.sys,"platform","linux")
+    monkeypatch.delattr(close.os,"pidfd_open",raising=False)
+    monkeypatch.delattr(close.signal,"pidfd_send_signal",raising=False)
+    monkeypatch.setattr(close,"process_snapshot",lambda:next(snapshots))
+    monkeypatch.setattr(close,"read_process",lambda pid:parent if pid==51 else other)
+    monkeypatch.setattr(close.os,"kill",lambda pid,sig:sent.append((pid,sig)))
+    report=close.stop_run(tmp_path,True)
+    assert sent==[(51,close.signal.SIGTERM)] and report["signalled_pids"]==[51]
+    assert report["status"]=="identified_processes_stopped"
 
 
 def test_proc_stat_identity_with_spaces_and_parentheses(tmp_path,monkeypatch):

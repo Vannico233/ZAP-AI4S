@@ -34,7 +34,13 @@ The old pick probe is included to retain its existing successful replay video.
 
 The standard-library-only helper matches the pipeline by its exact output
 directory and verifies process identity before SIGTERM; a stale launcher PID
-is never trusted. It waits for the pipeline and identified children to exit,
+is never trusted. It prefers pidfd when available. If Python lacks either pidfd
+API, or the container/kernel rejects that API as unavailable, it rechecks the
+same-user process's start time and command line immediately before ordinary
+SIGTERM. This fallback has the normal check-to-signal race of PID-based kill;
+it is not an atomic pidfd identity guarantee. `STOP_SIGNAL` prints the backend
+and PID used. No Python upgrade or package installation is required.
+It waits for the pipeline and identified children to exit,
 then holds the run lock while copying evidence. A timeout or a still-locked run
 is reported without deleting data. Unrelated services, including a separately
 started SAM server, are not stopped. Run this on the GPU host, not the CPU host.
