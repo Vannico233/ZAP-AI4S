@@ -17,7 +17,7 @@ from .experiment import (TRAIN_TASK_NAMES,TASK_NAMES,checkpoint,eligible,fingerp
                          rows,successful_results,write_json)
 
 ROOT=Path(__file__).resolve().parents[2]
-PIPELINE_VERSION="lab_success_first_v3_1"
+PIPELINE_VERSION="lab_zap_alignment_v4"
 
 def jobs(tasks,seeds,split,attempts,mode="independent",min_successes=10,attempt_start=0):
     if split=="train" and "rack_transfer" in tasks:raise ValueError("Held-out task cannot enter training")
@@ -126,7 +126,8 @@ class Runner:
             if not partition:continue
             job_path=self.output/"plans"/f"{name.replace('/','_')}_gpu{gpu}.json";write_json(job_path,partition)
             command=[sys.executable,"-m","tube_agent.lab.worker","--jobs",str(job_path),"--output",str(output),
-                     "--model",self.a.model,"--sam-url",self.a.sam_url,"--max-steps",str(self.a.max_steps)]
+                     "--model",self.a.model,"--sam-url",self.a.sam_url,"--max-steps",str(self.a.max_steps),
+                     "--action-protocol",getattr(self.a,"action_protocol","rpy_rounding_v2")]
             if adapter:command.extend(["--adapter",str(adapter)])
             workers.append(self.start(name.replace('/','_')+f"_gpu{gpu}",command,[gpu]))
         self.wait(workers,name);write_json(output/"DONE.json",{"jobs":job_list,"adapter":str(adapter) if adapter else None})
@@ -144,6 +145,7 @@ class Runner:
             if adapter:command.extend(["--adapter",str(adapter)])
             if data:command.extend(["--data",str(data)])
             if tasks:command.extend(["--tasks",*tasks])
+            command.extend(["--action-protocol",getattr(self.a,"action_protocol","rpy_rounding_v2")])
             process=self.start(name,command,self.a.policy_gpus);self.wait([process],name)
         if stage=="smoke":return None
         value=checkpoint(output)
@@ -207,7 +209,7 @@ def gpu_check(a):
 def make_videos(runner):
     output=runner.output;videos={}
     # Prefer a fresh final-policy evaluation, then other model successes.
-    sources=["final_fixed","final_test","base_test","pick_probe","imported_probe",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
+    sources=["final_fixed","final_test","base_test","pick_probe","pose_probe","imported_probe",*[p.name for p in sorted(output.glob("mine_round_*"))],"qualification","mine_warm","mine_base","warmup/rollouts","rl_fixed/rollouts","rl_diverse/rollouts","base_fixed"]
     for task in TASK_NAMES:
         marker=output/"videos"/(task+".json")
         if marker.exists() and read_json(marker).get("status")=="verified_success":
@@ -266,7 +268,8 @@ def execute_pipeline(runner):
     a=runner.a;out=runner.output
     if a.success_source:
         from .import_probe import import_probe
-        imported=import_probe(a.success_source,out/"imported_probe",a.model,a.seed)
+        imported=import_probe(a.success_source,out/"imported_probe",a.model,a.seed,
+                              getattr(a,"action_protocol","rpy_rounding_v2"))
         runner.status("probe_candidates_imported",candidates=imported["candidates"],skipped=imported["skipped"])
     runner.status("preflight",gpus=gpu_check(a))
     if shutil.disk_usage(out).free<30*2**30:raise RuntimeError("At least 30 GiB free disk space is required for trajectories/checkpoints")
@@ -275,6 +278,20 @@ def execute_pipeline(runner):
     stamp=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
     runner.step("render_check",[sys.executable,"scripts/check_render.py","--output",str(out/"preflight"/stamp/"render")],[a.policy_gpus[0]])
     runner.step("physics_cameras",[sys.executable,"-m","tube_agent.lab.doctor","--output",str(out/"preflight"/stamp/"physics")],[a.policy_gpus[0]])
+    if getattr(a,"action_protocol","rpy_rounding_v2")=="zap_pose_v1":
+        runner.step("zap_pose_physics",[sys.executable,"-m","tube_agent.lab.zap_check","--output",str(out/"preflight"/stamp/"zap_pose")],[a.policy_gpus[0]])
+    if getattr(a,"pose_probe",False):
+        probe_jobs=[]
+        for task in TRAIN_TASK_NAMES:
+            for shard,temperature in enumerate((0.,.3,.7)):
+                job=jobs([task],[a.seed],"train",1,attempt_start=300000+len(probe_jobs)*1000)[0]
+                job.update(id=f"{task}_probe_{shard}",temperature=temperature);probe_jobs.append(job)
+        runner.sample("pose_probe",None,probe_jobs)
+        from .success_gate import diagnostics
+        diagnostics(out,[out/"pose_probe"],a.seed);make_videos(runner);report(out,"pose_probe_complete")
+        runner.status("pose_probe_complete",training_started=False,tasks=summaries(out/"pose_probe"),
+                      message="Twelve independent fixed-seed semantic-pose trials; no training")
+        return
     if a.pick_probe:
         # A short independent pick-only debugging experiment, never training.
         probe_jobs=[]
@@ -300,9 +317,12 @@ def execute_pipeline(runner):
                              a.qualification_attempts,a.qualification_successes)
         if current["acquisition_ready"]:break
         missing=[t for t,n in current["unique_verified_successes"].items() if n<a.min_successes]
+        before=dict(current["unique_verified_successes"])
         name=f"mine_round_{round_index:03d}"
-        runner.sample(name,None,jobs(missing,[a.seed],"train",a.search_attempts,"search",
-                                    a.min_successes,attempt_start=1000+round_index*a.search_attempts))
+        search_jobs=jobs(missing,[a.seed],"train",a.search_attempts,"search",
+                         a.min_successes,attempt_start=1000+round_index*a.search_attempts)
+        for job in search_jobs:job["search_sources"]=[str(p) for p in sources]
+        runner.sample(name,None,search_jobs)
         sources.append(out/name)
         current=inspect_gate(out,sources,out/"qualification",a.seed,a.min_successes,
                              a.qualification_attempts,a.qualification_successes)
@@ -311,6 +331,11 @@ def execute_pipeline(runner):
                       verified_successes=current["unique_verified_successes"])
         if not any(current["unique_verified_successes"].values()):
             runner.status("acquisition_needs_debug",message="No verified success in the first batch. Inspect saved images/actions before spending more GPU time.")
+            break
+        if (getattr(a,"action_protocol","rpy_rounding_v2")=="zap_pose_v1"
+            and current["unique_verified_successes"]==before):
+            runner.status("acquisition_stalled",training_started=False,
+                          message="This round added no verified success. Stop for pose/perception diagnosis instead of repeating the same batch.")
             break
     current=inspect_gate(out,sources,out/"qualification",a.seed,a.min_successes,
                          a.qualification_attempts,a.qualification_successes)
@@ -361,7 +386,9 @@ def parser():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output",type=Path,default=Path("runs/lab_success_first/fixed_seed0_v3"));p.add_argument("--model",default=DEFAULT_MODEL)
     p.add_argument("--pick-probe",action="store_true",help="Short pick-only inference experiment; NEVER train")
-    p.add_argument("--success-source",type=Path,help="Completed v3 pick probe; compatible successes are copied and replay-checked")
+    p.add_argument("--pose-probe",action="store_true",help="Twelve four-task semantic-pose trials; NEVER train")
+    p.add_argument("--action-protocol",choices=("rpy_rounding_v2","zap_pose_v1"),default="rpy_rounding_v2")
+    p.add_argument("--success-source",type=Path,help="Completed pick/pose probe using the same protocol; successes are copied and replay-checked")
     p.add_argument("--probe-attempts",type=int,default=4,help="Attempts in each stochastic pick probe shard; plus one greedy trial")
     p.add_argument("--policy-gpus",nargs="+",type=int,default=[0,2,3]);p.add_argument("--sam-gpu",type=int,default=1)
     p.add_argument("--sam-url",default="http://127.0.0.1:8001")
@@ -382,7 +409,9 @@ def parser():
 
 def main():
     p=parser();a=p.parse_args()
-    if a.pick_probe and a.success_source:p.error("A probe cannot import previous successes")
+    if (a.pick_probe or a.pose_probe) and a.success_source:p.error("A probe cannot import previous successes")
+    if a.pick_probe and a.pose_probe:p.error("Select one probe mode")
+    if a.pose_probe and a.action_protocol!="zap_pose_v1":p.error("--pose-probe requires --action-protocol zap_pose_v1")
     if len(set(a.policy_gpus))!=len(a.policy_gpus) or a.sam_gpu in a.policy_gpus:p.error("Policy GPU IDs must be unique and exclude SAM GPU")
     if a.group_size<2 or a.group_size%len(a.policy_gpus):p.error("Group size must be >=2 and divisible by policy GPU count")
     if not 0<=a.seed<99997 or any(not 0<=s<100000 for s in a.test_seeds):p.error("Seed out of range")
@@ -396,8 +425,10 @@ def main():
             "validation_max":4*4*2*a.validation_attempts,"base_and_final_test":2*5*len(a.test_seeds)*a.test_attempts,
             "training_smoke":len(a.policy_gpus)}
     if a.pick_probe:budget={"independent_pick_probes":1+2*a.probe_attempts,"training":0}
+    if a.pose_probe:budget={"independent_four_task_probes":12,"training":0}
     if a.plan:
         print(json.dumps({"version":PIPELINE_VERSION,"policy_gpus":a.policy_gpus,"sam_gpu":a.sam_gpu,
+                          "action_protocol":a.action_protocol,
                           "episode_budgets":budget,"max_total_episodes":sum(budget.values()),
                           "fixed_scene_seed":a.seed,"no_training_before_gate":True,
                           "gate":{"unique_successes_per_task":a.min_successes,"independent_successes":a.qualification_successes,"independent_attempts":a.qualification_attempts},"held_out":"rack_transfer","resume":"Repeat identical command and output path"},indent=2));return

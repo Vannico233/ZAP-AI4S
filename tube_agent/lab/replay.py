@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image,ImageDraw
 from .env import LabEnv
+from .zap_env import make_env, ZapLabEnv
 from .vision import Cameras
 from .policy import execute,VisualPolicy
 from .run import state
@@ -14,13 +15,14 @@ def main():
     p.add_argument("--output",type=Path,required=True);a=p.parse_args()
     result=json.loads((a.episode/"result.json").read_text(encoding="utf-8"))
     rows=[json.loads(s) for s in (a.episode/"trajectory.jsonl").read_text(encoding="utf-8").splitlines() if s.strip()]
-    if result.get("environment_version")!=LabEnv.VERSION:raise ValueError("Environment version mismatch")
+    expected=ZapLabEnv.VERSION if result.get("action_protocol")=="zap_pose_v1" else LabEnv.VERSION
+    if result.get("environment_version")!=expected:raise ValueError("Environment version mismatch")
     if result.get("error") or not rows:raise ValueError("Cannot render an empty or errored episode")
     a.output.mkdir(parents=True,exist_ok=False)
     import imageio.v2 as imageio
     writer=imageio.get_writer(str(a.output/"episode.mp4"),fps=25,codec="libx264",quality=8,macro_block_size=16,
                              ffmpeg_params=["-movflags","+faststart"])
-    env=LabEnv(result["task"],result["split"],result["seed"],max_steps=result.get("max_steps",40),
+    env=make_env(result["task"],result["split"],result["seed"],max_steps=result.get("max_steps",40),
                action_protocol=result.get("action_protocol","strict_rpy_v1"))
     cameras=Cameras(env);stage={"step":0,"action":{"action":"ready"}};last=None
     class Context:queries=[]

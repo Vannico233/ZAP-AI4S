@@ -7,33 +7,41 @@ from .experiment import eligible, read_json, rows, write_json
 from .success_gate import sha256
 
 
-def import_probe(source, output, model, seed):
+def import_probe(source, output, model, seed, action_protocol="rpy_rounding_v2"):
     from .env import LabEnv
-    from .policy import SYSTEM, POLICY_VERSION, parse_visual_action
+    from .zap_env import ZapLabEnv
+    from .policy import VisualPolicy, parse_visual_action
     from .vision import PERCEPTION_VERSION
     source=Path(source).resolve();output=Path(output)
     config=read_json(source/"config.json");status=read_json(source/"status.json")
-    if not config.get("pick_probe") or status.get("stage")!="probe_complete":
-        raise ValueError("Only a completed independent pick probe may be imported")
+    pose_probe=config.get("pose_probe",False)
+    if not ((config.get("pick_probe") and status.get("stage")=="probe_complete")
+            or (pose_probe and status.get("stage")=="pose_probe_complete")):
+        raise ValueError("Only a completed independent pick/pose probe may be imported")
+    if config.get("action_protocol","rpy_rounding_v2")!=action_protocol:
+        raise ValueError("Probe action protocol differs; legacy RPY successes cannot enter a ZAP pose campaign")
     if config.get("seed")!=seed or Path(config["model"]).resolve()!=Path(model).resolve():
         raise ValueError("Probe seed/model differs from this acquisition")
-    signature=hashlib.sha256(SYSTEM.encode()).hexdigest();records=[];skipped=[]
-    for path in sorted((source/"pick_probe").glob("*/try_*/result.json")):
+    policy=VisualPolicy(None,action_protocol=action_protocol)
+    environment=ZapLabEnv if action_protocol=="zap_pose_v1" else LabEnv
+    signature=hashlib.sha256(policy.system.encode()).hexdigest();records=[];skipped=[]
+    low,high=(300000,312000) if pose_probe else (200000,203000)
+    for path in sorted((source/("pose_probe" if pose_probe else "pick_probe")).glob("*/try_*/result.json")):
         if ".incomplete-" in str(path):continue
         result=read_json(path)
         if not eligible(result):continue
         provenance=result.get("generator_provenance") or {}
-        expected={"seed":seed,"policy_version":POLICY_VERSION,"prompt_sha256":signature,
-                  "environment_version":LabEnv.VERSION,"action_protocol":LabEnv.ACTION_PROTOCOL,
+        expected={"seed":seed,"policy_version":policy.version,"prompt_sha256":signature,
+                  "environment_version":environment.VERSION,"action_protocol":action_protocol,
                   "perception_version":PERCEPTION_VERSION,"search_prefix_length":0}
         if (any(result.get(k)!=v for k,v in expected.items()) or provenance.get("adapter")
-            or provenance.get("training") is not False or not 200000<=result.get("attempt",-1)<203000
+            or provenance.get("training") is not False or not low<=result.get("attempt",-1)<high
             or Path(provenance.get("model","")).resolve()!=Path(model).resolve()):
             skipped.append({"source":str(path),"reason":"incompatible policy or provenance"});continue
         trajectory=path.parent/"trajectory.jsonl";trace=rows(trajectory)
         if not trace or len(trace)!=result["steps"]:raise ValueError("Incomplete probe trajectory: "+str(path))
         for row in trace:
-            if row["messages"][0]!={"role":"system","content":SYSTEM}:
+            if row["messages"][0]!={"role":"system","content":policy.system}:
                 raise ValueError("Probe system prompt differs: "+str(path))
             if parse_visual_action(row["raw_response"])[0]!=row["action"]:
                 raise ValueError("Recorded action differs from model output: "+str(path))

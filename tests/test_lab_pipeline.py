@@ -140,7 +140,8 @@ def test_gradient_reduction_math_with_unequal_rank_work():
     assert all(torch.allclose(g,torch.tensor([28./3]),atol=1e-6) for g in gradients)
 
 @pytest.mark.parametrize("mode",["zero","duplicate","missing_task","bad_replay","low_independent","pass"])
-def test_success_gate_controls_every_optimizer_step(tmp_path,monkeypatch,mode):
+@pytest.mark.parametrize("protocol",["rpy_rounding_v2","zap_pose_v1"])
+def test_success_gate_controls_every_optimizer_step(tmp_path,monkeypatch,mode,protocol):
     import tube_agent.lab.pipeline as pipeline
     import tube_agent.lab.success_gate as gate
     from types import SimpleNamespace
@@ -149,7 +150,8 @@ def test_success_gate_controls_every_optimizer_step(tmp_path,monkeypatch,mode):
     monkeypatch.setattr(pipeline,"make_videos",lambda runner:{})
     monkeypatch.setattr(gate,"replay_check",lambda path: mode!="bad_replay")
     a=pipeline.parser().parse_args(["--min-successes","2","--search-attempts","2","--search-rounds","2",
-                                   "--qualification-attempts","3","--qualification-successes","2"])
+                                   "--qualification-attempts","3","--qualification-successes","2",
+                                   "--action-protocol",protocol])
     a.output=tmp_path
     class FakeRunner:
         def __init__(self):self.a=a;self.output=tmp_path;self.training=[];self.samples=[]

@@ -13,11 +13,23 @@
 ## Design references
 
 - ZAP: https://arxiv.org/html/2610.35817v3
+- Orientation math checked against the project's public demonstration:
+  https://zero-real.github.io/assets/js/orientation-widget.js (`orient`).
+  Retrieved 2026-11-07; SHA256
+  `207094aae53d473e56ff3c87a7d78fb40b8c17ecaee48386277269bbba289668`.
+  `zap_pose.py` independently expresses its rotation convention and adapts
+  physical slot/tool axes to Panda. Eight reference vectors were evaluated
+  directly from the official JavaScript with Node for regression checks.
+  No project-site JavaScript is bundled or executed by the lab runtime.
 - Open-RUA uni-robot-agent: https://github.com/Open-RUA/uni-robot-agent
   (MIT). Consulted `docs/architecture.md`, `docs/sdk.md` and
   `uni_robot_agent/tools/gripper/motion.py` for the separation of observations,
   pose commands, measured execution feedback and official task outcomes.
   This implementation is independently written; no Open-RUA Python source is vendored.
+  The v4 audit additionally inspected `tools/gripper/pose.py`, `contracts.py`,
+  and integration gripper geometry at revision
+  `f3e0ec006295f74321b6a349c9b47ec82071eb28`. Open-RUA's RPY interface is not
+  ZAP's semantic orientation representation; these references are distinct.
 
 The original two-task baseline is a simulator/task and self-success SFT prototype.
 The new `tube_agent.lab` independently implements a scaled visual ZAP recipe:

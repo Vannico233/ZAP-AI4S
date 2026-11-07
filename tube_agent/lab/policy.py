@@ -101,8 +101,12 @@ class HttpGenerator:
     def close(self):self.client.close()
 
 class VisualPolicy:
-    def __init__(self,generator,temperature=.8,seed=0):
+    def __init__(self,generator,temperature=.8,seed=0,action_protocol="rpy_rounding_v2"):
         self.generator,self.temperature,self.seed=generator,temperature,seed
+        if action_protocol=="zap_pose_v1":
+            from .zap_policy import SYSTEM as prompt, POLICY_VERSION as version
+            self.system,self.version=prompt,version
+        else:self.system,self.version=SYSTEM,POLICY_VERSION
         self.history=[];self.plan=""
         self.action_memory=[];self.initial_visual_reference=None;self.last_parse=None
     def remember(self,action,feedback,step):
@@ -121,7 +125,7 @@ class VisualPolicy:
                             "initial_visual_reference":self.initial_visual_reference,
                             "gripper_interpretation":fingers,"action_history":self.action_memory,
                             "last_action_feedback":feedback,"remaining_plan":self.plan})
-        messages=[{"role":"system","content":SYSTEM}]+copy.deepcopy(self.history[-4:])
+        messages=[{"role":"system","content":self.system}]+copy.deepcopy(self.history[-4:])
         messages.append({"role":"user","content":[{"type":"text","text":content}]+
                          [{"type":"image_url","image_url":{"url":image_url(i)}} for i in images]})
         raw=self.generator(messages,self.seed+step*100003,self.temperature)

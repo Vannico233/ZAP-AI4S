@@ -20,12 +20,13 @@ def state(env):
                  env.data.time,env.lift_seconds,env.place_seconds,env.insert_seconds,env.cap_seconds,
                  env.lifted_once,env.thread_released].tolist()
 
-def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8,max_steps=40,prefix=None,save_frames=True,log_progress=False):
+def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8,max_steps=40,prefix=None,save_frames=True,log_progress=False,action_protocol="rpy_rounding_v2"):
     directory=Path(directory);directory.mkdir(parents=True,exist_ok=False)
     env=observer=None;started=time.monotonic();records=[];error=None;feedback=None
-    policy=VisualPolicy(generator,temperature,seed*1009+attempt)
+    policy=VisualPolicy(generator,temperature,seed*1009+attempt,action_protocol)
     try:
-        env=LabEnv(task,split,seed,max_steps);observer=Observer(env,segmenter)
+        from .zap_env import make_env
+        env=make_env(task,split,seed,max_steps,action_protocol);observer=Observer(env,segmenter)
         for saved in prefix or []:
             feedback=execute(env,observer,policy,saved["action"])
             if feedback!=saved["feedback"] or not np.allclose(state(env),saved["state_after"],atol=1e-9,rtol=0):
@@ -55,6 +56,7 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
                 if log_progress:
                     print(json.dumps({"event":"action","task":task,"attempt":attempt,"step":env.steps,
                                       "action":action,"feedback":feedback,"reward":row["judge_after"]["reward"],
+                                      "reward_terms":row["judge_after"]["reward_terms"],
                                       "success":row["judge_after"]["success"]}),flush=True)
         result=env.result()
     except Exception as exc:
@@ -65,14 +67,14 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
         if observer:observer.close()
         if env:env.close()
     result.update(task=task,split=split,seed=seed,attempt=attempt,policy="model",model="qwen-tube",
-                  observation_mode="rgbd_sam3.1_detector",environment_version=LabEnv.VERSION,
-                  action_protocol=LabEnv.ACTION_PROTOCOL,
+                  observation_mode="rgbd_sam3.1_detector",environment_version=env.VERSION if env else None,
+                  action_protocol=action_protocol,
                   perception_version=PERCEPTION_VERSION,
-                  policy_version=POLICY_VERSION,
+                  policy_version=policy.version,
                   leading_prose_responses=sum(r.get("response_format",{}).get("mode")=="leading_prose" for r in records),
                   parse_failures=sum(r.get("response_format",{}).get("mode")=="invalid" for r in records),
                   missing_detection_observations=sum(bool(r.get("perception",{}).get("missing_queries")) for r in records),
-                  prompt_sha256=hashlib.sha256(SYSTEM.encode()).hexdigest(),demonstration=None,
+                  prompt_sha256=hashlib.sha256(policy.system.encode()).hexdigest(),demonstration=None,
                   max_steps=max_steps,search_prefix_length=len(prefix or []),error=error,seconds=round(time.monotonic()-started,2))
     result["generator_provenance"]=getattr(generator,"provenance",None)
     write_json(directory/"result.json",result)
@@ -81,23 +83,44 @@ def episode(task,split,seed,attempt,directory,generator,segmenter,temperature=.8
 class PrefixTree:
     """UCB selection over deterministic prefixes; only model-generated actions."""
     def __init__(self,max_steps=40,max_nodes=128):
-        self.nodes={"root":{"prefix":[],"visits":0,"wins":0,"progress":0.}};self.round=0;self.max_steps=max_steps;self.max_nodes=max_nodes
+        self.nodes={"root":{"prefix":[],"visits":0,"wins":0,"progress":0.}}
+        self.round=0;self.max_steps=max_steps;self.max_nodes=max_nodes
+        self.selected="root";self.failed_expansions={};self.blocked=set();self.empty_close_cutoffs=0
     @staticmethod
     def key(rows):return hashlib.sha256(json.dumps([r["action"] for r in rows],sort_keys=True).encode()).hexdigest()
     def select(self):
         self.round+=1
         def score(n):return n["wins"]/(n["visits"]+1)+n["progress"]+.45*math.sqrt(math.log(self.round+1)/(n["visits"]+1))
         key=max(self.nodes,key=lambda k:score(self.nodes[k]))
+        self.selected=key
         return self.nodes[key]["prefix"]
     def update(self,rows,result):
         if result.get("error"):return
+        prefix_length=result.get("search_prefix_length")
+        selected=(self.key(rows[:prefix_length]) if prefix_length else "root") if prefix_length is not None else self.selected
+        if selected!="root":
+            self.failed_expansions[selected]=0 if result["success"] else self.failed_expansions.get(selected,0)+1
+            if self.failed_expansions[selected]>=3:
+                self.blocked.add(selected)
+                for key,node in list(self.nodes.items()):
+                    if key!="root" and any(self.key(node["prefix"][:n])==selected for n in range(1,len(node["prefix"])+1)):
+                        del self.nodes[key]
         self.nodes["root"]["visits"]+=1
         self.nodes["root"]["wins"]+=int(result["success"])
         for length,row in enumerate(rows,1):
             if row["feedback"].get("accepted") is False:break
-            if row["action"]["action"] not in ("move","gripper"):continue
+            kind=row["action"]["action"];judge=row["judge_after"]
+            closing=(kind=="gripper" and row["action"].get("opening",1.)<=.003) or (kind=="set_gripper" and row["action"].get("opening",1.)<=.04)
+            # This search decision uses the reward judge, never policy input.
+            # Resample before an empty closure, rather than replaying it and
+            # the following empty-hand lift. No replacement action is supplied.
+            if closing and judge.get("cap_held",judge.get("held")) is False:
+                self.empty_close_cutoffs+=1;break
+            if row["action"]["action"] not in ("move","gripper","move_to","set_gripper"):continue
+            if row["action"]["action"]=="move_to" and not row["feedback"].get("reached"):continue
             if length>=self.max_steps:continue
             prefix=rows[:length];key=self.key(prefix)
+            if key in self.blocked:break
             # Immutable recorded rows can share large embedded images across nodes.
             n=self.nodes.setdefault(key,{"prefix":list(prefix),"visits":0,"wins":0,
                                         "progress":min(.9,max(0.,row["judge_after"]["reward"]+.01*length))})
@@ -112,6 +135,7 @@ def main():
     p.add_argument("--task",choices=TASKS,required=True);p.add_argument("--split",choices=("train","validation","test","ood"),default="train")
     p.add_argument("--seed",type=int,default=0);p.add_argument("--attempts",type=int,default=8)
     p.add_argument("--search",action="store_true");p.add_argument("--max-steps",type=int,default=40)
+    p.add_argument("--action-protocol",choices=("rpy_rounding_v2","zap_pose_v1"),default="rpy_rounding_v2")
     p.add_argument("--temperature",type=float,default=.8);p.add_argument("--output",type=Path,default=Path("runs/lab"))
     p.add_argument("--base-url",default="http://127.0.0.1:8000/v1");p.add_argument("--sam-url",default="http://127.0.0.1:8001")
     a=p.parse_args()
@@ -129,7 +153,7 @@ def main():
         for attempt in range(a.attempts):
             prefix=tree.select() if a.search else None
             result,rows=episode(a.task,a.split,a.seed,attempt,run/f"try_{attempt:03d}",generator,segmenter,
-                                a.temperature,a.max_steps,prefix)
+                                a.temperature,a.max_steps,prefix,action_protocol=a.action_protocol)
             results.append(result)
             if a.search:tree.update(rows,result)
             summary={**summarize(results),"scene_count":1,"sampling_mode":"prefix_search" if a.search else "independent_rollouts",

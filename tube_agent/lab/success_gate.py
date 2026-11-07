@@ -14,6 +14,7 @@ def replay_check(directory):
     """Replay actual saved actions and compare every physical state, without SAM."""
     import numpy as np
     from .env import LabEnv
+    from .zap_env import make_env, ZapLabEnv
     from .policy import VisualPolicy, execute
     from .run import state
     directory = Path(directory)
@@ -21,9 +22,10 @@ def replay_check(directory):
     trajectory = rows(directory / "trajectory.jsonl")
     if not trajectory or len(trajectory) != result["steps"]:
         raise ValueError("Empty or incomplete trajectory")
-    if result["environment_version"] != LabEnv.VERSION:
+    expected=ZapLabEnv.VERSION if result.get("action_protocol")=="zap_pose_v1" else LabEnv.VERSION
+    if result["environment_version"] != expected:
         raise ValueError("Environment version differs")
-    env = LabEnv(result["task"], result["split"], result["seed"],
+    env = make_env(result["task"], result["split"], result["seed"],
                  max_steps=result["max_steps"], action_protocol=result["action_protocol"])
     observer = type("ReplayObserver", (), {"queries": []})()
     policy = VisualPolicy(None)

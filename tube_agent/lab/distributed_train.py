@@ -54,7 +54,9 @@ def main():
     p.add_argument("--epochs",type=int,default=1);p.add_argument("--batch-size",type=int,default=6)
     p.add_argument("--rank",type=int,default=16);p.add_argument("--learning-rate",type=float,default=1e-5)
     p.add_argument("--max-steps",type=int,default=40);p.add_argument("--max-context",type=int,default=16384)
-    p.add_argument("--sam-url",default="http://127.0.0.1:8001");a=p.parse_args()
+    p.add_argument("--sam-url",default="http://127.0.0.1:8001")
+    p.add_argument("--action-protocol",choices=("rpy_rounding_v2","zap_pose_v1"),default="rpy_rounding_v2")
+    a=p.parse_args()
     world=int(os.environ.get("WORLD_SIZE","1"));rank=int(os.environ.get("RANK","0"));local=int(os.environ.get("LOCAL_RANK","0"))
     if a.group_size<2 or a.group_size%world:p.error("group-size must be >=2 and divisible by policy GPU count")
     if min(a.updates,a.epochs,a.batch_size,a.max_steps)<1 or any(not 0<=s<100000 for s in a.scene_seeds):p.error("Invalid budgets/seeds")
@@ -114,7 +116,8 @@ def main():
             segmenter=SamClient(a.sam_url);segmenter.health()
             generator=LocalGenerator(model,processor,a.max_context)
             probe=a.output/f"probe_rank_{rank}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}"
-            result,trajectory=episode("pick","train",0,rank,probe,generator,segmenter,1.,1,save_frames=False,log_progress=True)
+            result,trajectory=episode("pick","train",0,rank,probe,generator,segmenter,1.,1,save_frames=False,log_progress=True,
+                                      action_protocol=a.action_protocol)
             if result.get("error") or not trajectory:raise RuntimeError("Visual training probe failed: "+str(result))
             train_mode();loss=-token_logps(model,*sample_inputs(processor,trajectory[0],a.max_context)).mean()/world
             if not torch.isfinite(loss):raise RuntimeError("Nonfinite training probe loss")
@@ -160,7 +163,7 @@ def main():
                 for local_attempt in range(a.group_size//world):
                     attempt=rank*(a.group_size//world)+local_attempt
                     result,trajectory=episode(task,"train",seed,update*a.group_size+attempt,batch_dir/f"try_{attempt:03d}",
-                        generator,segmenter,1.,a.max_steps,save_frames=False,log_progress=True)
+                        generator,segmenter,1.,a.max_steps,save_frames=False,log_progress=True,action_protocol=a.action_protocol)
                     if result.get("error"):raise RuntimeError(result["error"])
                     results.append(result);trajectories.append(trajectory)
                 all_results=[r for batch in gather(results) for r in batch]

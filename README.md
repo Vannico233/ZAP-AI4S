@@ -8,14 +8,18 @@ SAM weights download anonymously from ModelScope with checksum verification.
 See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 checks.
 This is a scaled method reproduction, not a claim to the paper's benchmark scores.
 
-**Latest server result:** the v3 fixed-scene pick probe completed with 4/9
-successes and no training. One supplied success was independently replayed with
-all states matching. See [LAB_GUIDE.md](LAB_GUIDE.md) for the new Git checkout,
-shared-runtime links, and `--success-source` reuse with mandatory replay checks.
+**2026-11-07 interface correction:** the previous RPY interface did not match
+ZAP's semantic angles. Use `--action-protocol zap_pose_v1` for absolute TCP XYZ,
+slot yaw / tilt / tilt direction in degrees, and normalized gripper opening.
+The geometry matches the original project's orientation widget, with a Panda
+axis adapter. See [LAB_GUIDE.md](LAB_GUIDE.md) for a 12-episode four-task probe,
+explicit fixed-seed command debugging, and source-backed differences.
+The prior v3 pick probe's 4/9 successes remain legacy results, not new-interface
+successes. The subsequent uploaded 72-episode snapshot had only one success,
+zero eligible new successes, and no basis for entering training.
 
-**Four-H100 automatic experiment:** after applying the offline auto-pipeline
-patch, run `bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v3`
-on the GPU instance. SAM runs on GPU 1; GPUs 0, 2, 3 sample and later train one
+**Four-H100 automatic experiment:** first run the semantic-pose probe in the
+guide. SAM runs on GPU 1; GPUs 0, 2, 3 sample and later train one
 shared policy. **No optimizer updates before success admission:** each task
 needs 10 unique, physically replay-verified visual successes and at least 3/10
 fresh independent successes. Zero-success acquisition stops for diagnosis.

@@ -1,5 +1,45 @@
 # Lab validation - 2026-11-07
 
+## Source-audited ZAP pose / reward / prefix correction (v4)
+
+The uploaded v3.1 summary snapshot contained 72 completed new episodes, one task
+success and zero eligible new successes. It does not include the imported
+legacy successes. Follow-up action evidence showed: pick closed at z=0.04 m,
+measured zero jaw opening, then lifted an empty hand; the next attempt reused
+that four-action failure prefix. Transport similarly closed above the object
+and later descended with closed jaws. Insert eventually lifted but did not seat
+the tube. Unscrew closed at z=0.35 m above a cap near z=0.13 m, never released
+the thread and included format errors. These are motion/recovery failures;
+changing the angle representation alone is not evidence of a model improvement.
+
+The corrected optional `zap_pose_v1` uses the original project's semantic
+orientation convention, verified against its public JavaScript, SHA256
+`207094aae53d473e56ff3c87a7d78fb40b8c17ecaee48386277269bbba289668`.
+Physical slot/tool axes match eight reference cases, including both sides of
+horizontal tilt and inverted orientation. Panda's body axes are explicitly
+adapted. Full path IK failure is checked before dynamics are advanced.
+
+Five fixed-seed physical diagnostics passed through the new API: pick,
+transport, insert, unscrew and rack_transfer, with zero rejected actions.
+These are scripted, privileged calibration checks, NOT Qwen successes or
+training data. Completion is held for 0.5 s; the task geometry stays explicit.
+
+Reward checks cover the terminal-state approach/grasp/lift ladder, no repeated
+step accumulation, and loss of lift credit after release. Prefix tests cover
+same-policy reuse, rejection of manual/other-task/old-protocol sources, rollback
+before a judge-confirmed empty closure, and pruning after repeated failures.
+Visual-loop tests use a no-mask test double, not a SAM accuracy claim. Both
+protocols retain gate tests for zero/duplicate/missing-task/bad-replay and low
+independent success cases. The 12-episode pose probe cannot enter training.
+
+Final full local regression: **181 passed, 1 skipped**, 131.03 s. A subsequently
+added physical new-probe import/replay admission test passed separately (1/1).
+Python 3.11 syntax passed for 58 source/script/test files; `git diff --check`
+passed. The skipped test is Windows distributed transport; native H100/NCCL
+and actual Qwen3.5-4B + SAM success under this protocol remain server checks.
+No new model success rate or RL improvement is claimed. The server should run
+the bounded four-task pose probe before starting another acquisition campaign.
+
 ## Server pick success and Git migration (v3.1, 2026-11-07)
 
 The uploaded completed probe reports 4 successes / 9 episodes, zero errors and

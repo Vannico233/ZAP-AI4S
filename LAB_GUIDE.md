@@ -3,7 +3,114 @@
 This is an independently implemented, small-scale ZAP-method reproduction for
 Qwen3.5-4B, not a reproduction of the paper's reported scores. All commands and
 program output are English/ASCII. The original `tube_agent.run` baseline remains
-available. New experiments use `tube_agent.lab` and `runs/lab_v1`.
+available. New experiments use `tube_agent.lab`; use the v4 commands below.
+
+## ZAP interface correction and bounded diagnosis (v4)
+
+Source audit: [paper v3, section 3.3 and Appendix A](https://arxiv.org/html/2610.35817v3),
+[official orientation widget](https://zero-real.github.io/assets/js/orientation-widget.js),
+and [Open-RUA pose math](https://github.com/Open-RUA/uni-robot-agent/blob/f3e0ec006295f74321b6a349c9b47ec82071eb28/uni_robot_agent/tools/gripper/pose.py).
+ZAP uses absolute world TCP positions in metres and **slot yaw, tilt, tilt
+direction in degrees**, not RPY. Its level slot is yawed about world Z, then
+tilted about `[sin(phi), -cos(phi), 0]`. Open-RUA currently uses fixed-axis RPY
+at its boundary; it is an execution-design reference, not the source of the
+paper's orientation convention. Our previous RPY interface was a substantive
+deviation. It remains available only to preserve old experiments/replays.
+
+The new single-arm JSON serialization is:
+
+```json
+{"action":"move_to","xyz":[0.46,-0.18,0.20],"slot_yaw":0,"tilt":0,"tilt_direction":0}
+```
+
+`set_gripper` takes an opening fraction (0 closed, 1 fully open); `done` ends
+the episode. The other tools remain `change_query` and `update_todo`. No grasp,
+approach, transport or insertion macro is exposed to the model. Policy output
+remains one JSON object rather than the paper's native multi-arm tool schema.
+
+The controller prechecks all IK waypoints and joint continuity before moving.
+It refuses invalid paths without clipping a target or executing a prefix.
+Reached/short feedback contains measured position and rotation errors. This
+small MuJoCo controller is not a copy of the original collision planner.
+
+Reward is a **final-state ladder**, not a sum of step bonuses: approach <=0.2,
+grasp 0.2, additional lift <=0.55 over 8 cm, transport total <=0.9, task success
+5.0. Every step logs its current `reward_terms`, but GRPO consumes the final
+episode reward. Local insert/unscrew extensions, a 0.01/turn penalty and a
+0.05/invalid-action penalty are explicit adaptations. Completion must remain
+stable for 0.5 s. The lab pick instruction still requires 6 cm clearance;
+8 cm is the reward saturation height, not a changed instruction.
+
+The paper mines successes with short GRPO warm-up plus prefix search, then SFT
+and longer GRPO. **At the user's request we retain no training before verified
+successes**, so that initial warm-up is intentionally absent. Our 10-success
+and 3/10-qualification thresholds are engineering choices, not paper settings.
+
+After the previous experiment has stopped, update on the networked CPU instance:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git
+git pull --ff-only
+```
+
+On the GPU instance, run this bounded diagnostic first:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git
+bash scripts/start_lab_all.sh runs/lab_pose_probe/seed0_v4 \
+  --action-protocol zap_pose_v1 --pose-probe \
+  --sam-url http://127.0.0.1:8002
+```
+
+It runs physical checks, then 12 independent model trials: each of pick,
+transport, insert and unscrew at temperatures 0, 0.3 and 0.7, all scene seed 0.
+It **never trains**, even if every trial succeeds. SAM uses GPU 1; policies
+use GPUs 0, 2 and 3. Read `status.json`, `logs/pose_probe_gpu*.log`, per-job
+summaries and available verified videos. Collect evidence with:
+
+```bash
+.venv-linux/bin/python scripts/collect_success_first.py --run runs/lab_pose_probe/seed0_v4
+```
+
+Once this interface is validated on the actual model, continue acquisition with:
+
+```bash
+bash scripts/start_lab_all.sh runs/lab_success_first/seed0_v4 \
+  --action-protocol zap_pose_v1 --sam-url http://127.0.0.1:8002 \
+  --success-source runs/lab_pose_probe/seed0_v4
+```
+
+Only compatible new-interface successes can be imported. Prefix search now
+starts from same-task, same-seed, same-policy model traces in previous batches,
+instead of discarding their tree between rounds. Logs show `search_initialized`
+and `search_expand` with source/node counts and prefix length. A semantic-pose
+round adding no verified successes stops for diagnosis. The existing gate
+still blocks SFT, optimizer smoke and RL until all four tasks qualify.
+The supplied v3.1 trace showed an empty closure at z=0.04 m followed by empty
+lifting, with all four steps reused as a prefix. Search now stops adding nodes
+at a judge-confirmed empty closure and resamples before that action. A non-root
+prefix failing three expansions is pruned with its descendants. The search
+judge can select branches; it never supplies target coordinates, actions or
+hidden object state to the policy. These pruning thresholds are local choices.
+
+For explicit step-by-step command debugging at the same scene seed:
+
+```bash
+bash scripts/lab.sh command-probe \
+  --task transport --seed 0 --output runs/manual_pose/transport_trial_01
+```
+
+This applies the private EGL runtime automatically. Enter one JSON action per line, ending with
+`{"action":"done"}`; alternatively pass `--commands your_actions.json` with a
+JSON array. Each step writes top/side images and measured pose/feedback/reward.
+Repeat with a new output directory to change commands from the same initial
+state. These traces are labeled `manual_command_debug`, never eligible for
+self-success SFT or model success-rate claims. `zap_check` similarly uses
+privileged geometry only to validate physics, never as model input.
+
+Do not reinterpret the prior 4/9 legacy pick probe or scripted physics success
+as evidence that the corrected model interface already succeeds. H100 model
+results are pending the new probe.
 
 ## Scope and honest boundaries
 
@@ -11,7 +118,7 @@ available. New experiments use `tube_agent.lab` and `runs/lab_v1`.
 |---|---|
 | Training tasks | `pick`, `transport`, `insert`, `unscrew` |
 | Held-out composition | `rack_transfer`: blue source rack to yellow destination rack; forbidden in the train split |
-| Robot | Single Panda; XYZ + full RPY and gripper opening |
+| Robot | Single Panda; v4 semantic full pose and normalized opening; legacy RPY retained for replay |
 | Vision | Two calibrated RGB-D cameras; native **SAM 3.1 multiplex checkpoint**, official predictor, text queries; 3D visible-surface statistics from masks and depth |
 | Policy input | Annotated RGB, estimated surface geometry, robot proprioception and execution feedback. No simulator object coordinates or success/reward fields |
 | Data mining | Independent fixed-scene stochastic trials; optional deterministic prefix replay and UCB tree search over model-generated actions |
