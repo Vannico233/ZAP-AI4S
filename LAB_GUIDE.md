@@ -3,8 +3,50 @@
 This is an independently implemented, small-scale ZAP-method reproduction for
 Qwen3.5-4B, not a reproduction of the paper's reported scores. All commands and
 program output are English/ASCII. The original `tube_agent.run` baseline remains
-available. The current campaign is being closed out at the user's request.
-The earlier experiment instructions below are retained for reference.
+available. The older acquisition campaign has a closeout helper; the user has
+subsequently started the bounded v4 pose probe described below.
+
+## Stream progress until the experiment finishes
+
+For the already running pose probe, fetch just the read-only monitor on the CPU
+instance, without changing the experiment's running source files:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git &&
+git fetch origin main &&
+git show origin/main:scripts/watch_lab_run.py > watch_lab_run.py
+```
+
+On the GPU instance, attach to the existing experiment:
+
+```bash
+.venv-linux/bin/python watch_lab_run.py runs/lab_pose_probe/seed0_v4
+```
+
+The monitor first shows a bounded tail of existing logs, then streams new action
+lines and episode outcomes, stage changes, completed-trial counts and final
+video paths. It returns automatically after the identified launcher exits and
+the final logs are read. It reports crashes without final status instead of
+waiting forever. Exit codes: 0 for a completed workflow (task failures may still
+exist), 1 for errors, 2 for an unmet success gate, and 130 for interruption.
+`[WAIT]` every 30 quiet seconds means the launcher is alive, not proof of action
+progress. No simulation, training, network request or process signal is started
+by this standard-library-only monitor. Run it on the actual GPU host.
+
+For future launches, after updating the checkout when no experiment is running,
+add `--follow` to the existing launcher command:
+
+```bash
+bash scripts/start_lab_all.sh runs/lab_pose_probe/seed0_v4 \
+  --action-protocol zap_pose_v1 --pose-probe \
+  --sam-url http://127.0.0.1:8002 --follow
+```
+
+Do not repeat the launch command just to view an active run: use the attach
+command above. `--follow` is consumed by the launcher and does not change model
+or experiment settings. Ctrl+C closes the monitor; the detached experiment
+continues. Different GPU workers' output is interleaved, not a global action
+execution order. Exact task/attempt/step identifiers are printed on each action.
 
 ## Stop and archive the current experiment
 

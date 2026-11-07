@@ -1,5 +1,20 @@
 # Lab validation - 2026-11-07
 
+## Foreground progress monitor
+
+The user started the bounded `seed0_v4` pose probe and requested continuous
+progress until completion. Added a standalone read-only monitor and optional
+launcher `--follow`. **18 local tests passed** for complete/partial/truncated log
+lines, bounded historical tails, per-stage result counts, live action output,
+completion/error/interruption exit codes, waiting for launcher cleanup, stale
+status after a restart, missing final status, and matching the actual output
+directory rather than a reused PID, and quiet-worker notifications despite
+launcher heartbeats. Python 3.11 syntax and CLI help passed. Git Bash syntax and
+a dummy-worker/monitor launch check passed, including paths with spaces, removal
+of `--follow` from worker arguments and propagation of the monitor's exit code.
+Linux /proc and liveness operations are simulated in the Windows test suite;
+this is monitoring validation, not a new Qwen experiment result.
+
 ## User-requested experiment closeout
 
 Server correction: the original helper stopped at its pidfd capability check
