@@ -22,8 +22,13 @@ def main():
             skipped.append(str(path));return
         files[path.relative_to(root).as_posix()]=path.read_bytes()
     for name in ("config.json","status.json","report.json","success_gate.json","gate_replays.json",
-                 "sam_health.json","acquisition_diagnostics.json","videos/index.json"):
+                 "recipe_plan.json","recipe_success_gate.json","recipe_gate_replays.json","selection.json",
+                 "sam_health.json","acquisition_diagnostics.json","videos/index.json","REPORT.md","data/export.json"):
         add(root/name)
+    for stage in ("warmup","sft","rl_fixed","rl_diverse"):
+        add(root/stage/"config.json");add(root/stage/"DONE.json")
+        for path in (root/stage/"metrics").glob("*.json"):add(path)
+        for path in (root/stage).glob("step_*/COMPLETE.json"):add(path)
     launcher=root/"launcher.log"
     if launcher.is_file():
         with launcher.open("rb") as f:
@@ -56,10 +61,11 @@ def main():
     if diag.exists():
         for item in json.loads(diag.read_text()).values():
             if item["best"]:episodes.add(Path(item["best"][0]["episode"]))
-    gate=root/"success_gate.json"
-    if gate.exists():
-        for records in json.loads(gate.read_text())["approved"].values():
-            if records:episodes.add(Path(records[0]["result"]).parent)
+    for name in ("success_gate.json","recipe_success_gate.json"):
+        gate=root/name
+        if gate.exists():
+            for records in json.loads(gate.read_text())["approved"].values():
+                if records:episodes.add(Path(records[0]["result"]).parent)
     video_index=root/"videos/index.json"
     if video_index.exists():
         for record in json.loads(video_index.read_text(encoding="utf-8")).values():
@@ -79,7 +85,7 @@ def main():
                 except ValueError:continue
                 selected.setdefault("first",row);last=row
                 if row.get("feedback",{}).get("accepted") is False:selected.setdefault("invalid",row)
-                if row.get("action",{}).get("action")=="gripper":selected.setdefault("gripper",row)
+                if row.get("action",{}).get("action") in ("gripper","set_gripper"):selected.setdefault("gripper",row)
         if last:selected["last"]=last
         for label,row in selected.items():
             number=0

@@ -127,12 +127,13 @@ def test_export_refuses_manual_or_held_out_or_assisted_successes(tmp_path):
     with pytest.raises(ValueError,match="No eligible"):export(tmp_path,tmp_path/"sft.jsonl")
     assert not (tmp_path/"sft.jsonl").exists()
 
-def test_qwen_vision_lora_sft_and_grpo_backward(tmp_path):
+@pytest.mark.parametrize("loss_type",["grpo","dr_grpo"])
+def test_qwen_vision_lora_sft_and_grpo_backward(tmp_path,loss_type):
     torch=pytest.importorskip("torch")
     from transformers import Qwen3_5ForConditionalGeneration
     from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5Config
     from peft import LoraConfig,get_peft_model
-    from tube_agent.lab.train import token_logps,clipped_loss
+    from tube_agent.lab.train import token_logps,clipped_loss,dr_grpo_loss
     torch.set_num_threads(2);torch.manual_seed(4)
     config=Qwen3_5Config(text_config={"vocab_size":256,"hidden_size":64,"intermediate_size":128,
         "num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"head_dim":16,
@@ -156,7 +157,8 @@ def test_qwen_vision_lora_sft_and_grpo_backward(tmp_path):
     model.enable_input_require_grads()
     model.train()
     optimizer=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],lr=.01)
-    loss=clipped_loss(token_logps(model,inputs,6),old,1.)
+    current=token_logps(model,inputs,6)
+    loss=clipped_loss(current,old,1.) if loss_type=="grpo" else dr_grpo_loss(current,old,1.,40*256)
     loss.backward();assert any(p.grad is not None and p.grad.abs().sum()>0 for p in model.parameters() if p.requires_grad)
     optimizer.step();optimizer.zero_grad()
     assert token_logps(model,inputs,6).mean()>old.mean()

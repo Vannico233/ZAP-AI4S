@@ -14,6 +14,14 @@ from pathlib import Path
 import random
 from .experiment import checkpoint,eligible,read_json,write_json,rows
 
+
+def task_schedule(path,tasks,updates):
+    schedule=read_json(path) if path else [tasks[i%len(tasks)] for i in range(updates)]
+    if (not isinstance(schedule,list) or len(schedule)!=updates
+        or any(t not in tasks for t in schedule)):
+        raise ValueError("Task schedule must contain exactly --updates training task names")
+    return schedule
+
 def synchronize_gradients(parameters,distributed=None):
     """SUM gradients already normalized by global batch/group size."""
     import torch
@@ -49,6 +57,8 @@ def main():
     p.add_argument("stage",choices=("smoke","sft","grpo"));p.add_argument("--output",type=Path,required=True)
     p.add_argument("--model",required=True);p.add_argument("--adapter",type=Path);p.add_argument("--data",type=Path)
     p.add_argument("--tasks",nargs="+",choices=("pick","transport","insert","unscrew"),default=["pick","transport","insert","unscrew"])
+    p.add_argument("--task-schedule",type=Path)
+    p.add_argument("--loss-normalization",choices=("grpo","dr_grpo"),default="grpo")
     p.add_argument("--scene-seeds",nargs="+",type=int,default=[0]);p.add_argument("--seed",type=int,default=0)
     p.add_argument("--updates",type=int,default=24);p.add_argument("--group-size",type=int,default=6)
     p.add_argument("--epochs",type=int,default=1);p.add_argument("--batch-size",type=int,default=6)
@@ -61,9 +71,10 @@ def main():
     if a.group_size<2 or a.group_size%world:p.error("group-size must be >=2 and divisible by policy GPU count")
     if min(a.updates,a.epochs,a.batch_size,a.max_steps)<1 or any(not 0<=s<100000 for s in a.scene_seeds):p.error("Invalid budgets/seeds")
     if a.stage=="sft" and a.data is None:p.error("SFT requires --data")
+    schedule=task_schedule(a.task_schedule,a.tasks,a.updates)
     import torch
     import torch.distributed as dist
-    from .train import load,LocalGenerator,advantages,sample_inputs,token_logps,clipped_loss
+    from .train import load,LocalGenerator,advantages,sample_inputs,token_logps,clipped_loss,dr_grpo_loss
     from .run import episode
     from .vision import SamClient
     torch.cuda.set_device(local);device=f"cuda:{local}"
@@ -79,7 +90,11 @@ def main():
     metadata={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()}
     metadata.update(world_size=world,gradient_reduction="sum_global_normalized",kl_beta=0.,clip=.2,
                     rollout_temperature=1.,top_p=1.,top_k=0,vision_encoder_trained=False,
-                    held_out_tasks=["rack_transfer"],training_split="train",weight_decay=.01)
+                    held_out_tasks=["rack_transfer"],training_split="train",weight_decay=.01,
+                    task_schedule_contents=schedule,max_response_tokens=256,
+                    advantage_std_normalization=a.loss_normalization!="dr_grpo",
+                    episode_token_denominator=a.max_steps*256 if a.loss_normalization=="dr_grpo" else "actual_turns_and_turn_tokens",
+                    stapo=False,async_policy_staleness=0)
     if (a.output/"config.json").exists() and read_json(a.output/"config.json")!=metadata:
         raise ValueError("Training configuration changed; use a new output directory")
     if rank==0:write_json(a.output/"config.json",metadata)
@@ -152,9 +167,13 @@ def main():
             segmenter=SamClient(a.sam_url);segmenter.health()
             generator=LocalGenerator(model,processor,a.max_context)
             for update in range(completed,a.updates):
-                task=a.tasks[update%len(a.tasks)];seed=a.scene_seeds[(update//len(a.tasks))%len(a.scene_seeds)]
+                task=schedule[update];seed=a.scene_seeds[(update//len(a.tasks))%len(a.scene_seeds)]
+                if rank==0:print(json.dumps({"event":"training_group_start","stage":a.output.name,
+                    "update":update+1,"total_updates":a.updates,"task":task,"scene_seed":seed,
+                    "group_size":a.group_size,"loss_normalization":a.loss_normalization}),flush=True)
                 generator.provenance={"model":a.model,"training_stage":str(a.output),"policy_update":update,
-                                      "rank":rank,"temperature":1.,"top_p":1.,"top_k":0,"on_policy":True}
+                                      "rank":rank,"temperature":1.,"top_p":1.,"top_k":0,"on_policy":True,
+                                      "training":True,"initial_adapter":str(a.adapter) if a.adapter else None}
                 # An interrupted update is regenerated from the last complete optimizer
                 # checkpoint; partial samples are preserved but never mixed with new ones.
                 batch_dir=a.output/"rollouts"/f"update_{update:04d}"/f"rank_{rank:02d}"
@@ -166,8 +185,10 @@ def main():
                         generator,segmenter,1.,a.max_steps,save_frames=False,log_progress=True,action_protocol=a.action_protocol)
                     if result.get("error"):raise RuntimeError(result["error"])
                     results.append(result);trajectories.append(trajectory)
+                    print(json.dumps({"event":"training_episode","update":update+1,"rank":rank,
+                                      "local_attempt":local_attempt+1,**result}),flush=True)
                 all_results=[r for batch in gather(results) for r in batch]
-                adv=advantages([r["reward"] for r in all_results]);old=[]
+                adv=advantages([r["reward"] for r in all_results],normalize_std=a.loss_normalization!="dr_grpo");old=[]
                 model.eval()
                 with torch.no_grad():
                     for trajectory in trajectories:
@@ -179,10 +200,13 @@ def main():
                         if row["feedback"].get("accepted") is False:value=-1.;invalid_turns+=1
                         if value==0:continue
                         current=token_logps(model,*sample_inputs(processor,row,a.max_context))
-                        loss=clipped_loss(current,old[i][j].to(device),value)/len(trajectory)/a.group_size
+                        if a.loss_normalization=="dr_grpo":
+                            loss=dr_grpo_loss(current,old[i][j].to(device),value,a.max_steps*256)/a.group_size
+                        else:loss=clipped_loss(current,old[i][j].to(device),value)/len(trajectory)/a.group_size
                         loss.backward();loss_sum+=float(loss.detach())
                 updated=optimize();stats=gather({"loss":loss_sum,"invalid_turns":invalid_turns})
                 record(update+1,{"stage":"grpo","step":update+1,"task":task,"scene_seed":seed,
+                    "total_updates":a.updates,"loss_normalization":a.loss_normalization,
                     "successes":sum(r["success"] for r in all_results),"group_size":a.group_size,
                     "rewards":[r["reward"] for r in all_results],"advantages":adv.tolist(),
                     "optimizer_step_taken":updated,

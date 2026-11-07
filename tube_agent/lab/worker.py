@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 from .experiment import eligible,read_json,write_json,rows,fingerprint
 
-def seed_tree(tree, job, sources, action_protocol, model=None):
+def seed_tree(tree, job, sources, action_protocol, model=None,adapter=None):
     from .policy import VisualPolicy, parse_visual_action
     policy=VisualPolicy(None,action_protocol=action_protocol)
     signature=hashlib.sha256(policy.system.encode()).hexdigest()
@@ -20,7 +20,7 @@ def seed_tree(tree, job, sources, action_protocol, model=None):
                 or result.get("observation_mode")!="rgbd_sam3.1_detector"
                 or result.get("action_protocol")!=action_protocol or result.get("prompt_sha256")!=signature
                 or result.get("demonstration") is not None or result.get("error")
-                or provenance.get("adapter") or provenance.get("training") is not False):continue
+                or provenance.get("adapter")!=adapter or provenance.get("training") is not False):continue
             if model and provenance.get("model")!=model:continue
             trace=rows(path.parent/"trajectory.jsonl")
             if len(trace)!=result.get("steps"):raise ValueError("Incomplete search source: "+str(path))
@@ -47,7 +47,8 @@ def run_jobs(jobs,output,generator,segmenter,max_steps=40,action_protocol="rpy_r
         tree=PrefixTree(max_steps);results=[];unique_successes=set()
         if job["mode"]=="search":
             seeded=seed_tree(tree,job,job.get("search_sources",[]),action_protocol,
-                             (getattr(generator,"provenance",None) or {}).get("model"))
+                             (getattr(generator,"provenance",None) or {}).get("model"),
+                             (getattr(generator,"provenance",None) or {}).get("adapter"))
             print(json.dumps({"event":"search_initialized","job":job["id"],"seed":job["seed"],
                               "seeded_episodes":seeded,"nodes":len(tree.nodes),
                               "empty_close_cutoffs":tree.empty_close_cutoffs,"pruned_branches":len(tree.blocked),

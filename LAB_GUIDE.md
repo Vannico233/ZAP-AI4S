@@ -4,9 +4,145 @@ This is an independently implemented, small-scale ZAP-method reproduction for
 Qwen3.5-4B, not a reproduction of the paper's reported scores. All commands and
 program output are English/ASCII. The original `tube_agent.run` baseline remains
 available. The older acquisition campaign has a closeout helper; the user has
-subsequently started the bounded v4 pose probe described below.
+subsequently completed the bounded v4 pose probe described below (0/12 model
+successes) and authorized GRPO warm-up before success acquisition.
+
+## Current recipe: warm-up first, four H100 GPUs
+
+The paper's section 3.3 explicitly mines successes with short GRPO warm-up,
+supplements them with prefix-tree search, self-distills successful traces with
+SFT, then runs longer GRPO. The former success-first restriction is lifted for
+this recipe. Source: https://arxiv.org/html/2610.35817v3#S3.SS3 .
+
+On the networked CPU instance, with the previous experiment finished:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git &&
+git pull --ff-only
+```
+
+On the GPU instance, use the same shared checkout and existing environments:
+
+```bash
+cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git &&
+bash scripts/start_zap_recipe.sh runs/lab_zap_recipe/seed0_v5
+```
+
+No package installation or new weight download is required. This launcher sets
+`--zap-recipe --action-protocol zap_pose_v1 --sam-url http://127.0.0.1:8002
+--follow`. It starts its own SAM process on GPU 1 and three policy replicas on
+GPUs 0, 2, 3. Do not start separate model/SAM terminals for it. A port occupied by
+an old service causes a clear startup refusal without killing that service; if
+necessary, select another unused local port with `--sam-url`.
+
+The new output directory is deliberate: previous probe outputs and checkpoints
+are preserved. Identical command + output resumes committed stages/optimizer
+checkpoints. Changing code or settings requires a new output directory. All
+completed rollout files remain available. A partial optimizer update is sampled
+again from the last committed checkpoint; its prior partial samples are archived
+and excluded from SFT admission and training counts.
+
+| Fixed-seed warm-up task | Optimizer groups | Rollouts (6/group) | Preferred unique successes |
+|---|---:|---:|---:|
+| pick | 24 | 144 | 20 |
+| transport | 20 | 120 | 20 |
+| insert | 12 | 72 | 10 |
+| unscrew | 12 | 72 | 10 |
+
+All groups use seed 0 for the physical initial scene. Sampling RNG changes on
+every episode. Tasks are interleaved through one shared adapter, and gradients
+are summed across all three policy GPUs. These are 408 changing-policy training
+rollouts, not 408 independent evaluations of one checkpoint. More budget for
+easier primitives follows this experiment's allocation request; the paper instead
+oversamples difficult tasks. Counts can be changed with `--warmup-updates` and
+`--success-targets`, in the four-task order above, before starting a new output.
+
+The automatic sequence is:
+
+1. GPU/renderer/physics/semantic-pose checks, then real multimodal backward and
+   three-rank gradient synchronization smoke. Smoke parameters are discarded.
+2. Base-policy fixed-seed baseline: 3 independent episodes per primitive.
+3. All 68 warm-up groups, even when early groups have zero successes.
+4. Physically replay and deduplicate successful training traces. For tasks below
+   their preferred target, prefix search uses the frozen final warm-up adapter,
+   at most 4 rounds x 16 leaves per task. Earlier-policy prefixes are not injected
+   into this search. No handwritten continuation becomes a model success.
+5. SFT admits only model-generated, visual, training-split, successful trajectories
+   with zero rejected actions, matching raw outputs, and matching physical replay.
+   The preferred targets are 20/20/10/10. After the search budget is exhausted,
+   **at least 3 distinct verified successes in each task** permits SFT; any
+   shortfall from the preferred targets is reported. This small-data threshold is
+   an engineering choice, not a success-rate guarantee or a paper hyperparameter.
+6. Self-distill admitted traces into the pretrained base for one SFT epoch. Run
+   48 fixed-seed GRPO groups and 48 more over four training scene seeds, all four
+   primitive tasks. Only the GRPO groups generate fresh on-policy gradients.
+7. Choose among base, warm-up, SFT, fixed RL and diverse RL using four-task
+   validation (2 seeds x 2 trials/task). Then evaluate base and selected policies
+   on 3 test seeds x 2 trials for all five tasks, plus 3 fixed-seed trials for
+   each primitive. `rack_transfer` is absent from training and checkpoint selection.
+8. Replay genuine model successes, verify every physical state and save at most
+   one successful video per task. The video index records checkpoint/stage, seed,
+   split and whether it came from prefix search. No success means no success video.
+
+If any task remains below the SFT minimum, the run **still finishes validation,
+test/generalization evaluation and available videos** using base/warm-up
+candidates. Its final state is `completed_partial`, with monitor exit code 2;
+SFT and post-SFT RL are explicitly marked as not run. A complete recipe has
+state `completed`; this also does not imply that all five tasks succeeded.
+Infrastructure errors remain errors and can be resumed after correction.
+
+Maximum budget with these defaults: 1,407 episodes, including 3 one-turn smoke
+episodes, baselines, 408 warm-up, up to 256 search, 576 post-SFT RL and evaluation.
+SFT reuses saved data. The number of optimizer steps actually taken can be lower
+than the group count when all advantages are zero and no invalid turn is present.
+The experiment can take many hours; it has no promised wall-clock completion time.
+
+Progress shows `UPDATE`, `UPDATE_DONE`, individual action/episode lines,
+`[TRAINING_YIELD]`, `[SFT_DATA]`, and finally `[VIDEO]`/`[END]`. The monitor exits
+when the experiment exits. Ctrl+C stops monitoring, while the background experiment
+continues. Reattach without restarting it:
+
+```bash
+.venv-linux/bin/python scripts/watch_lab_run.py runs/lab_zap_recipe/seed0_v5
+```
+
+Read the final evidence:
+
+```bash
+RUN_DIR=runs/lab_zap_recipe/seed0_v5
+cat "$RUN_DIR/status.json"
+cat "$RUN_DIR/recipe_success_gate.json"
+cat "$RUN_DIR/report.json"
+cat "$RUN_DIR/videos/index.json"
+```
+
+Warm-up trajectories are under
+`warmup/rollouts/update_NNNN/rank_NN/try_NNN/trajectory.jsonl`; group metrics
+under `warmup/metrics/step_NNNNN.json`; committed adapters and optimizers under
+`warmup/step_NNNNN/`. Search episodes remain under `mine_round_NNN/`.
+All paths are relative to `RUN_DIR`. `REPORT.md` gives a human-readable summary.
+
+The new trainer uses centered group rewards without dividing by standard
+deviation, and a fixed `max_steps * 256` token denominator rather than actual
+trajectory length, following the Dr. GRPO normalization described in Appendix C.
+Rejected turns have negative advantage. The existing semantic-pose terminal
+reward ladder is unchanged: approach <=0.2, grasp 0.2, additional lift <=0.55,
+transport/insertion/rotation/separation partial credit <=0.9, full success 5.0,
+with length/invalid-action penalties and stability checks. Reward terms are
+recorded for every action and group; privileged judging state is not policy input.
+
+This remains a **method adaptation**: Qwen3.5-4B, one Panda in MuJoCo, 4 training
+tasks, two synchronous SAM RGB-D views, LoRA rank 16, group size 6, 40 turns,
+16k context, synchronous updates and zero reference KL. The original Appendix C
+uses rank 64, 8-rollout groups, 50 turns, 127k context and an asynchronous trainer
+with STAPO and DPPO. Those algorithms are not claimed here. The source-backed
+semantic pose geometry and five tools remain unchanged. Local tests cannot certify
+H100 end-to-end success; the GPU smoke check is the first real server training gate.
 
 ## Stream progress until the experiment finishes
+
+The following commands describe the historical v4 pose probe. For the new
+warm-up recipe, use the launcher above.
 
 For the already running pose probe, fetch just the read-only monitor on the CPU
 instance, without changing the experiment's running source files:

@@ -1,5 +1,53 @@
 # Lab validation - 2026-11-07
 
+## v5 warm-up-first recipe
+
+Implemented after explicit authorization to perform short GRPO before finding
+successful traces. The default interleaved task schedule has 24/20/12/12 groups,
+6 rollouts/group (408 total), followed by capped prefix mining, audited SFT,
+48 fixed-scene and 48 diverse-scene GRPO groups, validation selection and held-out
+test/video generation. There is no all-task base-policy success gate before warm-up.
+SFT requires at least three distinct physically replay-verified model successes
+per task; the preferred acquisition targets remain 20/20/10/10. Below that minimum,
+the pipeline still evaluates available policies and reports `completed_partial`.
+
+Verification on local Windows Python 3.13.5:
+
+- Full suite: **253 passed, 1 skipped**. The skipped test is actual multiprocess
+  Gloo reduction, unsupported by this Windows Torch build. Three-rank gradient
+  summation math is covered with synchronized test collectives. Real NCCL runs
+  in the server's initial `training_smoke` stage.
+- Both legacy GRPO and new Dr. GRPO-style losses passed real tiny-random-Qwen3.5
+  multimodal LoRA backward, likelihood-improvement, SFT, adapter serialization,
+  optimizer resume and next-update equivalence tests. These are architecture
+  checks, not scores of the pretrained 4B model.
+- Workflow tests exercise zero-success warm-up/search exhaustion, all-task SFT
+  admission, held-out-task exclusion, partial-result evaluation and reporting,
+  changed-evidence rejection, and warm-up eligibility only after optimizer
+  checkpoint commit. Manual/teacher/test/partial/mismatched raw-action data are
+  not admitted. Prefix seeding requires the same frozen adapter.
+- The existing physical semantic-pose diagnostics, rendering, visual input,
+  controller/replay, SAM HTTP contract and legacy workflows passed regression.
+  No production prompt, physics, reward or success threshold was relaxed.
+- New shell wrapper passed Git Bash syntax and fake-worker launch tests,
+  including paths containing spaces, budget/port overrides, automatic progress
+  attachment and propagation of the partial-completion exit code. No GPU job
+  was started by that shell contract test.
+- `compileall`, `git diff --check`, and the no-model `--plan` output passed.
+  Plan maximum is 1,407 episodes, excluding SFT's reuse of saved actions.
+
+The first sandboxed test attempt could not write pytest's default temporary
+directory; a workspace-local test directory resolved it. A sandboxed loopback
+HTTP test was denied by Windows socket permissions; it passed with approved
+local socket access, as did the final full suite. These were local testing
+restrictions, not failures observed on the user's server.
+
+Limitations: no direct access to the user's H100s or pretrained 4B/SAM models;
+the complete new GPU training run has **not** been executed locally. The source
+paper's normalization and warm-up/SFT/RL order are followed, but rank 16, groups
+of 6, synchronous updates, smaller context and absence of STAPO/DPPO remain
+declared method adaptations. Tests do not establish a task success rate.
+
 ## Completed v4 probe: evidence review and controlled diagnostics
 
 The five uploaded parts reconstructed the server archive with SHA256

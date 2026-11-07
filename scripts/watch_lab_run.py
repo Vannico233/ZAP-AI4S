@@ -8,7 +8,7 @@ import sys
 import time
 
 TERMINAL = {"completed": 0, "already_completed": 0, "pose_probe_complete": 0,
-            "probe_complete": 0, "awaiting_success": 2, "failed": 1, "interrupted": 130}
+            "probe_complete": 0, "completed_partial": 2, "awaiting_success": 2, "failed": 1, "interrupted": 130}
 
 
 def read_json(path):
@@ -99,7 +99,20 @@ def display_line(path, line, emit):
             if feedback.get("accepted") is False:
                 emit(f"[{label}] REJECTED: {feedback.get('reason', '')}")
             return True
-        if kind == "episode":
+        if kind == "training_group_start":
+            emit(f"[{label}] UPDATE {event.get('update')}/{event.get('total_updates')} "
+                 f"task={event.get('task')} scene_seed={event.get('scene_seed')} "
+                 f"rollouts={event.get('group_size')} loss={event.get('loss_normalization')}")
+            return True
+        if event.get("stage") == "grpo" and "optimizer_step_taken" in event:
+            rewards = event.get("rewards", [])
+            mean = sum(rewards)/len(rewards) if rewards else 0.
+            emit(f"[{label}] UPDATE_DONE {event.get('step')}/{event.get('total_updates', '?')} "
+                 f"task={event.get('task')} successes={event.get('successes')}/{event.get('group_size')} "
+                 f"mean_reward={mean:.4f} invalid_turns={event.get('invalid_turns')} "
+                 f"optimizer_step={event.get('optimizer_step_taken')}")
+            return True
+        if kind in ("episode", "training_episode"):
             outcome = "ERROR" if event.get("error") else "SUCCESS" if event.get("success") else "FAIL"
             emit(f"[{label}] EPISODE {outcome} task={event.get('task')} try={event.get('attempt')} "
                  f"steps={event.get('steps')} reward={event.get('reward')} error={event.get('error')}")
@@ -130,6 +143,23 @@ def progress(root):
         total = "/12" if stage == "pose_probe" else ""
         details = " ".join(f"{task}={v['successes']}/{v['episodes']}" for task, v in sorted(tasks.items()))
         lines.append(f"[PROGRESS] {stage}: finished={done}{total} successes={successes} {details}".rstrip())
+    for stage in ("warmup", "rl_fixed", "rl_diverse"):
+        tasks = defaultdict(lambda: {"episodes": 0, "successes": 0})
+        updates = 0
+        for path in sorted((root/stage/"metrics").glob("step_*.json")):
+            row = read_json(path)
+            if not row or not (root/stage/f"step_{row.get('step', 0):05d}"/"COMPLETE.json").is_file():
+                continue
+            updates += 1
+            tasks[row.get("task", "unknown")]["episodes"] += row.get("group_size", 0)
+            tasks[row.get("task", "unknown")]["successes"] += row.get("successes", 0)
+        if updates:
+            details = " ".join(f"{task}={v['successes']}/{v['episodes']}" for task, v in sorted(tasks.items()))
+            lines.append(f"[TRAINING_YIELD] {stage}: committed_updates={updates} {details}")
+    gate = read_json(root/"recipe_success_gate.json")
+    if gate:
+        details = " ".join(f"{t}={n}/{gate.get('targets', {}).get(t, '?')}" for t, n in gate.get("unique_verified_successes", {}).items())
+        lines.append(f"[SFT_DATA] verified_unique {details} ready={gate.get('passed')}")
     return lines
 
 

@@ -19,15 +19,24 @@ from .env import TRAIN_TASKS
 from .run import episode
 from .vision import SamClient
 
-def advantages(rewards):
+def advantages(rewards,normalize_std=True):
     values=np.asarray(rewards,dtype=float)
     if not np.isfinite(values).all():raise ValueError("Nonfinite reward")
-    return (values-values.mean())/(values.std()+1e-6)
+    centered=values-values.mean()
+    return centered/(values.std()+1e-6) if normalize_std else centered
 
 def clipped_loss(new_logp,old_logp,advantage,clip=.2):
     import torch
     ratio=torch.exp(new_logp-old_logp)
     return -torch.minimum(ratio*advantage,torch.clamp(ratio,1-clip,1+clip)*advantage).mean()
+
+
+def dr_grpo_loss(new_logp,old_logp,advantage,token_budget,clip=.2):
+    """Fixed maximum-episode token denominator; no sampled-length normalization."""
+    import torch
+    if token_budget<1:raise ValueError("Positive token budget required")
+    ratio=torch.exp(new_logp-old_logp)
+    return -torch.minimum(ratio*advantage,torch.clamp(ratio,1-clip,1+clip)*advantage).sum()/token_budget
 
 def load(model_path,adapter=None,rank=16,device="cuda:0",trainable=True):
     import torch

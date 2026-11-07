@@ -18,13 +18,19 @@ The prior v3 pick probe's 4/9 successes remain legacy results, not new-interface
 successes. The subsequent uploaded 72-episode snapshot had only one success,
 zero eligible new successes, and no basis for entering training.
 
-**Four-H100 automatic experiment:** first run the semantic-pose probe in the
-guide. SAM runs on GPU 1; GPUs 0, 2, 3 sample and later train one
-shared policy. **No optimizer updates before success admission:** each task
-needs 10 unique, physically replay-verified visual successes and at least 3/10
-fresh independent successes. Zero-success acquisition stops for diagnosis.
-The v1 zero-success warm-up/RL fallback has been removed. Use a new output path.
-See [LAB_GUIDE.md](LAB_GUIDE.md) for exact criteria, artifacts and commands.
+**Current four-H100 recipe:** the v4 pose probe is complete (0/12 model
+successes). Use `bash scripts/start_zap_recipe.sh runs/lab_zap_recipe/seed0_v5`
+after updating on the CPU instance. SAM uses GPU 1; GPUs 0, 2, 3 train a shared
+policy. The explicitly authorized warm-up starts from zero successes: 68 GRPO
+groups / 408 rollouts, followed by bounded prefix search, replay-verified
+self-success SFT, 96 further GRPO groups, validation, held-out evaluation and
+successful replay videos when available. Progress streams until the run ends.
+The new loss centers rewards without standard-deviation normalization and uses
+a fixed token denominator (Dr. GRPO style). LoRA rank 16 and synchronous updates
+remain scaled adaptations. See [LAB_GUIDE.md](LAB_GUIDE.md) for exact budgets,
+data-admission rules, resume behavior and limits. The old success-first mode
+remains available for historical reproducibility; it is not the new default
+launcher. No model success rate is guaranteed.
 
 ## Legacy two-task oracle-state baseline
 

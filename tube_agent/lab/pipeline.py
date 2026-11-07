@@ -17,7 +17,7 @@ from .experiment import (TRAIN_TASK_NAMES,TASK_NAMES,checkpoint,eligible,fingerp
                          rows,successful_results,write_json)
 
 ROOT=Path(__file__).resolve().parents[2]
-PIPELINE_VERSION="lab_zap_alignment_v4"
+PIPELINE_VERSION="lab_zap_warmup_v5"
 
 def jobs(tasks,seeds,split,attempts,mode="independent",min_successes=10,attempt_start=0):
     if split=="train" and "rack_transfer" in tasks:raise ValueError("Held-out task cannot enter training")
@@ -132,9 +132,14 @@ class Runner:
             workers.append(self.start(name.replace('/','_')+f"_gpu{gpu}",command,[gpu]))
         self.wait(workers,name);write_json(output/"DONE.json",{"jobs":job_list,"adapter":str(adapter) if adapter else None})
         return output
-    def train(self,name,stage,adapter=None,data=None,updates=1,seeds=None,tasks=None):
-        from .success_gate import require_gate
-        require_gate(self.output)
+    def train(self,name,stage,adapter=None,data=None,updates=1,seeds=None,tasks=None,schedule=None):
+        if getattr(self.a,"zap_recipe",False):
+            from .recipe_gate import require_gate
+            if (name,stage) not in (("training_smoke","smoke"),("warmup","grpo")):
+                require_gate(self.output)
+        else:
+            from .success_gate import require_gate
+            require_gate(self.output)
         output=self.output/name
         if not (output/"DONE.json").is_file():
             command=[sys.executable,"-m","torch.distributed.run","--standalone",f"--nproc_per_node={len(self.a.policy_gpus)}",
@@ -145,6 +150,9 @@ class Runner:
             if adapter:command.extend(["--adapter",str(adapter)])
             if data:command.extend(["--data",str(data)])
             if tasks:command.extend(["--tasks",*tasks])
+            if schedule:command.extend(["--task-schedule",str(schedule)])
+            if getattr(self.a,"zap_recipe",False):command.extend(["--loss-normalization","dr_grpo"])
+            command.extend(["--seed",str(self.a.seed)])
             command.extend(["--action-protocol",getattr(self.a,"action_protocol","rpy_rounding_v2")])
             process=self.start(name,command,self.a.policy_gpus);self.wait([process],name)
         if stage=="smoke":return None
@@ -248,6 +256,14 @@ def report(output,status,error=None):
     value["success_gate"]=read_json(output/"success_gate.json") if (output/"success_gate.json").exists() else None
     value["all_five_have_success_videos"]=all(value["videos"].get(t,{}).get("status")=="verified_success" for t in TASK_NAMES)
     value["mining"]={name:summaries(output/name) for name in ("mine_base","mine_warm")}
+    value["pose_probe"]=summaries(output/"pose_probe")
+    value["mining"].update({p.name:summaries(p) for p in sorted(output.glob("mine_round_*")) if p.is_dir()})
+    if (output/"recipe_plan.json").exists():
+        from .zap_recipe import training_summary
+        value["recipe"]=read_json(output/"recipe_plan.json")
+        value["recipe_success_gate"]=read_json(output/"recipe_success_gate.json") if (output/"recipe_success_gate.json").exists() else None
+        value["training"]={name:training_summary(output/name) for name in ("warmup","rl_fixed","rl_diverse")}
+        value["sft_completed"]=(output/"sft/DONE.json").is_file()
     write_json(output/"report.json",value)
     lines=["# Visual lab experiment",f"\nStatus: {status}","\nCompleted execution does not mean every task succeeded.",
            "\n| Task | Base fixed seed | Final fixed seed | Base held-out scenes | Final held-out scenes | Video |",
@@ -261,6 +277,15 @@ def report(output,status,error=None):
                   "rack_transfer is held out from all training and checkpoint selection.",
                   "Videos may come from mining or earlier checkpoints; videos/index.json records the source."])
     if error:lines.append("\nError: "+error)
+    if "recipe" in value:
+        lines.append("\n## Training and self-success acquisition")
+        for name,details in value["training"].items():
+            lines.append(f"\n{name}: {details['updates']} committed updates. Training yield is not an evaluation success rate.")
+        gate=value.get("recipe_success_gate")
+        if gate:
+            lines.append("\nVerified unique training successes: "+json.dumps(gate["unique_verified_successes"]))
+            lines.append(f"\nPreferred data targets met: {gate['targets_met']}. SFT data gate passed: {gate['passed']}.")
+        lines.append("\nMethod adaptation: Qwen3.5-4B, MuJoCo/Franka, LoRA rank 16, synchronous Dr.GRPO-style loss; no STAPO or asynchronous stale-policy training.")
     (output/"REPORT.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
     return value
 
@@ -280,6 +305,10 @@ def execute_pipeline(runner):
     runner.step("physics_cameras",[sys.executable,"-m","tube_agent.lab.doctor","--output",str(out/"preflight"/stamp/"physics")],[a.policy_gpus[0]])
     if getattr(a,"action_protocol","rpy_rounding_v2")=="zap_pose_v1":
         runner.step("zap_pose_physics",[sys.executable,"-m","tube_agent.lab.zap_check","--output",str(out/"preflight"/stamp/"zap_pose")],[a.policy_gpus[0]])
+    if getattr(a,"zap_recipe",False):
+        from .zap_recipe import execute
+        execute(runner)
+        return
     if getattr(a,"pose_probe",False):
         probe_jobs=[]
         for task in TRAIN_TASK_NAMES:
@@ -405,10 +434,14 @@ def parser():
     p.add_argument("--test-seeds",nargs="+",type=int,default=[0,1,2]);p.add_argument("--cpu-threads",type=int,default=4)
     p.add_argument("--min-free-gpu-gb",type=int,default=48);p.add_argument("--startup-timeout",type=int,default=900)
     p.add_argument("--plan",action="store_true",help="Print budgets and GPU assignment without loading models")
+    from .zap_recipe import add_arguments
+    add_arguments(p)
     return p
 
 def main():
     p=parser();a=p.parse_args()
+    from .zap_recipe import validate,plan as recipe_plan
+    validate(a,p)
     if (a.pick_probe or a.pose_probe) and a.success_source:p.error("A probe cannot import previous successes")
     if a.pick_probe and a.pose_probe:p.error("Select one probe mode")
     if a.pose_probe and a.action_protocol!="zap_pose_v1":p.error("--pose-probe requires --action-protocol zap_pose_v1")
@@ -426,12 +459,14 @@ def main():
             "training_smoke":len(a.policy_gpus)}
     if a.pick_probe:budget={"independent_pick_probes":1+2*a.probe_attempts,"training":0}
     if a.pose_probe:budget={"independent_four_task_probes":12,"training":0}
+    if a.zap_recipe:budget=recipe_plan(a)["episode_budgets"]
     if a.plan:
         print(json.dumps({"version":PIPELINE_VERSION,"policy_gpus":a.policy_gpus,"sam_gpu":a.sam_gpu,
                           "action_protocol":a.action_protocol,
                           "episode_budgets":budget,"max_total_episodes":sum(budget.values()),
                           "fixed_scene_seed":a.seed,"no_training_before_gate":True,
-                          "gate":{"unique_successes_per_task":a.min_successes,"independent_successes":a.qualification_successes,"independent_attempts":a.qualification_attempts},"held_out":"rack_transfer","resume":"Repeat identical command and output path"},indent=2));return
+                          "gate":{"unique_successes_per_task":a.min_successes,"independent_successes":a.qualification_successes,"independent_attempts":a.qualification_attempts},"held_out":"rack_transfer","resume":"Repeat identical command and output path",
+                          **(recipe_plan(a) if a.zap_recipe else {})},indent=2));return
     if sys.platform!="linux":p.error("Run the full pipeline on the Linux GPU instance; --plan works locally")
     import fcntl
     from tube_agent.model_utils import resolve_model
@@ -450,8 +485,9 @@ def main():
     def interrupted(signum,frame):raise KeyboardInterrupt(f"Signal {signum}")
     signal.signal(signal.SIGTERM,interrupted)
     try:
-        if (a.output/"report.json").exists() and read_json(a.output/"report.json").get("status")=="completed":
-            runner.status("already_completed",report=str(a.output/"report.json"));return
+        if (a.output/"report.json").exists() and read_json(a.output/"report.json").get("status") in ("completed","completed_partial"):
+            previous=read_json(a.output/"report.json")["status"]
+            runner.status("already_completed" if previous=="completed" else previous,report=str(a.output/"report.json"));return
         execute_pipeline(runner)
     except BaseException as error:
         runner.status("interrupted" if isinstance(error,KeyboardInterrupt) else "failed",error=f"{type(error).__name__}: {error}")

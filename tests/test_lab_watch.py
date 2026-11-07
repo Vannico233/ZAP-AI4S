@@ -56,6 +56,21 @@ def test_progress_separates_stages_and_ignores_partial_files(tmp_path):
         "[PROGRESS] pose_probe: finished=2/12 successes=1 pick=1/1 transport=0/1"]
 
 
+def test_warmup_display_distinguishes_training_yield_and_sft_admission(tmp_path):
+    lines=[]
+    monitor.display_line(Path("warmup.log"),json.dumps({"event":"training_group_start", "update":2,
+        "total_updates":68,"task":"transport","scene_seed":0,"group_size":6,"loss_normalization":"dr_grpo"}),lines.append)
+    assert "UPDATE 2/68" in lines[0] and "task=transport" in lines[0]
+    put(tmp_path/"warmup/metrics/step_00001.json",{"step":1,"task":"pick","group_size":6,"successes":1})
+    assert not monitor.progress(tmp_path)  # An uncommitted update is not finished training.
+    put(tmp_path/"warmup/step_00001/COMPLETE.json",{"step":1})
+    put(tmp_path/"recipe_success_gate.json",{"unique_verified_successes":{"pick":1},"targets":{"pick":20},"passed":False})
+    assert monitor.progress(tmp_path)==[
+        "[TRAINING_YIELD] warmup: committed_updates=1 pick=1/6",
+        "[SFT_DATA] verified_unique pick=1/20 ready=False"]
+    assert monitor.TERMINAL["completed_partial"]==2
+
+
 def test_follow_streams_live_action_and_exits_after_completion(tmp_path, monkeypatch):
     log = tmp_path / "logs/pose_probe_gpu0.log"
     log.parent.mkdir()
