@@ -1,0 +1,11 @@
+[
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.0163],"slot_yaw":-0.00011,"tilt":0,"tilt_direction":0},
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.0163],"slot_yaw":-0.00011,"tilt":0,"tilt_direction":0},
+  {"action":"set_gripper","opening":0},
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.16],"slot_yaw":0,"tilt":0,"tilt_direction":0},
+  {"action":"move_to","xyz":[0.45,0.22,0.16],"slot_yaw":0,"tilt":0,"tilt_direction":0},
+  {"action":"move_to","xyz":[0.45,0.22,0.025],"slot_yaw":0,"tilt":0,"tilt_direction":0},
+  {"action":"set_gripper","opening":1},
+  {"action":"move_to","xyz":[0.45,0.22,0.20],"slot_yaw":0,"tilt":0,"tilt_direction":0},
+  {"action":"done"}
+]

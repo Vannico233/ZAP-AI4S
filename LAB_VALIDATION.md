@@ -1,5 +1,57 @@
 # Lab validation - 2026-11-07
 
+## Completed v4 probe: evidence review and controlled diagnostics
+
+The five uploaded parts reconstructed the server archive with SHA256
+`9c02f11e83449527f087b39b2d1ea4a91729511bdd51d2f7dbc26d141c7441ee`.
+The archive contains the completed fixed-seed pose probe, 12 model episodes,
+446 actions, zero task successes, zero infrastructure errors and no training.
+The held-out rack-transfer task was not sampled. The server's scripted pose
+calibration passed all five tasks with zero invalid actions; that is not a model
+success result.
+
+| Model task | Episodes | Successes | Actions | Rejected actions | IK rejections |
+|---|---:|---:|---:|---:|---:|
+| Pick | 3 | 0 | 86 | 80 | 80 |
+| Transport | 3 | 0 | 120 | 58 | 53 |
+| Insert | 3 | 0 | 120 | 65 | 63 |
+| Unscrew | 3 | 0 | 120 | 7 | 2 |
+
+198 of 210 rejected actions reported no continuous IK path. Four others were
+below the workspace floor; eight were unsupported/malformed actions (including
+five parse failures). Pick at temperatures 0 and 0.3 repeated a rejected pose
+40 times each. The 0.7 pick rollout reached valid poses but never closed its
+gripper and submitted an empty-hand lift. Transport at temperatures 0 and 0.3
+established two-finger contact, then tried low, horizontal destination poses
+without first lifting. Insert had one contact-containing trace but no successful
+lift or seating. Unscrew's greedy rollout repeated an already reached pose 40
+times without closing; the 0.3 rollout only closed at step 40. No cap was released.
+
+Initial rendered views and SAM measurements locate the tube in both cameras.
+After approach/grasp, some views lose masks under the hand; no rollout uses
+change_query. These observations support action-selection/recovery failures,
+with additional occlusion, rather than a service outage. They do not prove all
+poses requested by the model are physically impossible or the controller is
+free of numerical/planning limitations.
+
+Local physical counterfactuals kept seed 0, geometry, rewards and the executor
+unchanged. The local source digest matches the server record exactly:
+`6a9fe865581b3ef7583b211b80aa7d06ede6611a2586966451464dc21e3ae73d`.
+The original first pick action was rejected at waypoint 60/60, as on
+the server. Changing only its tilt to top-down made that same XYZ reachable
+(position error 0.29 mm). A five-action engineer-authored pick sequence using
+the saved SAM coordinates succeeded, with 12.27 cm lift and zero rejections.
+The first three model transport actions followed by an engineer-authored lift,
+carry, release and withdraw sequence also succeeded, with 1.79 seconds stable
+placement and zero rejections. Both local action-replay videos passed every
+saved-state comparison and the success check; their frames explicitly label
+them SCRIPTED PHYSICS DIAGNOSTIC (NOT QWEN).
+
+The fixed JSON command files are under `examples/lab_diagnostics/`. They are
+manual diagnostics, not demonstrations to silently add to the model prompt,
+not autonomous Qwen successes, and not eligible self-success training data.
+No Qwen sampling, SFT or RL was performed during this local evidence review.
+
 ## Foreground progress monitor
 
 The user started the bounded `seed0_v4` pose probe and requested continuous

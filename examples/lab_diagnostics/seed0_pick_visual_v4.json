@@ -1,0 +1,7 @@
+[
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.15],"slot_yaw":-12.7,"tilt":0,"tilt_direction":0},
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.0163],"slot_yaw":-12.7,"tilt":0,"tilt_direction":0},
+  {"action":"set_gripper","opening":0},
+  {"action":"move_to","xyz":[0.4647,-0.1814,0.14],"slot_yaw":-12.7,"tilt":0,"tilt_direction":0},
+  {"action":"done"}
+]

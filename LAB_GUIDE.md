@@ -48,6 +48,27 @@ or experiment settings. Ctrl+C closes the monitor; the detached experiment
 continues. Different GPU workers' output is interleaved, not a global action
 execution order. Exact task/attempt/step identifiers are printed on each action.
 
+## Reproduce the seed-0 diagnostic correction
+
+The completed v4 model probe had zero successes. Its review and the controlled
+physical checks are recorded in `LAB_VALIDATION.md`. To verify the manually
+corrected pick with the existing environment, run on the GPU host after fetching
+the two JSON command files or updating the idle checkout:
+
+```bash
+OUT="runs/lab_command_probe/pick_seed0_diagnostic_$(date -u +%Y%m%dT%H%M%SZ)"
+bash scripts/lab.sh command-probe --task pick --seed 0 \
+  --commands examples/lab_diagnostics/seed0_pick_visual_v4.json --output "$OUT" &&
+bash scripts/lab.sh replay --episode "$OUT" --output "${OUT}_video"
+```
+
+For the corrected transport, use task `transport`, a new output directory and
+`examples/lab_diagnostics/seed0_transport_corrected_v4.json`. These commands use
+no model or SAM service. `command-probe` labels their results as manual debug
+with `training_eligible=false`; replay labels the video NOT QWEN. Their success
+validates execution of these specific command sequences only. It does not
+change the v4 model's 0/12 outcome or authorize training before the current gate.
+
 ## Stop and archive the current experiment
 
 On the networked **CPU instance**, fetch only the standalone closeout helper.
