@@ -5,12 +5,15 @@ at action boundaries. It does not claim asynchronous video tracking parity.
 """
 import argparse
 import hashlib
-from http.server import BaseHTTPRequestHandler,HTTPServer
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import inspect
 import traceback
+import threading
+import time
+import uuid
 
 
 def adapt_session_init(predictor):
@@ -88,6 +91,8 @@ def main():
     health={"ready":True,"backend":"sam3.1_detector","checkpoint_sha256":digest.hexdigest(),
             "checkpoint_revision":manifest.get("revision"),"checkpoint_source":manifest.get("source","huggingface"),
             "temporal_tracking":False,"threshold":a.threshold,"session_init_compat":session_compat}
+    inference_lock=threading.Lock()
+    health.update(pid=os.getpid(),active_request=None,last_completed_request=None)
     class Handler(BaseHTTPRequestHandler):
         def reply(self,status,body):
             payload=json.dumps(body).encode()
@@ -98,6 +103,7 @@ def main():
         def do_GET(self):self.reply(200,health) if self.path=="/health" else self.reply(404,{"error":"not found"})
         def do_POST(self):
             if self.path!="/segment":return self.reply(404,{"error":"not found"})
+            request_id=uuid.uuid4().hex;started=time.monotonic()
             try:
                 size=int(self.headers.get("Content-Length",0))
                 if not 0<size<12*1024*1024:raise ValueError("Invalid request size")
@@ -105,13 +111,29 @@ def main():
                 if not isinstance(queries,list) or not 1<=len(queries)<=8 or any(not isinstance(q,str) or not 1<=len(q)<=120 for q in queries):
                     raise ValueError("Expected 1-8 short text queries")
                 img=decode_image(request["image"]);detections=[]
-                with torch.inference_mode(),torch.autocast("cuda",dtype=torch.bfloat16):
-                    detections=segment_snapshot(predictor,img,queries,a.threshold)
+                # Health stays responsive while model inference remains serialized.
+                # A busy/failed service stops the caller; no masks are fabricated.
+                if not inference_lock.acquire(timeout=120):
+                    return self.reply(503,{"error":"SAM queue wait exceeded 120 seconds","request_id":request_id})
+                try:
+                    health["active_request"]={"id":request_id,"started_unix":time.time()}
+                    print(json.dumps({"event":"segment_start","request_id":request_id,"queries":queries,
+                                      "queue_seconds":round(time.monotonic()-started,3)}),flush=True)
+                    with torch.inference_mode(),torch.autocast("cuda",dtype=torch.bfloat16):
+                        detections=segment_snapshot(predictor,img,queries,a.threshold)
+                    print(json.dumps({"event":"segment_complete","request_id":request_id,
+                        "seconds":round(time.monotonic()-started,3),"detections":len(detections),
+                        "cuda_allocated_mb":round(torch.cuda.memory_allocated()/2**20)}),flush=True)
+                    health["last_completed_request"]={"id":request_id,"finished_unix":time.time()}
+                finally:
+                    health["active_request"]=None
+                    inference_lock.release()
                 self.reply(200,{"detections":detections})
             except Exception as exc:
                 traceback.print_exc()
-                self.reply(400,{"error":f"{type(exc).__name__}: {exc}"})
-    server=HTTPServer(("127.0.0.1",a.port),Handler)
+                print(json.dumps({"event":"segment_failed","request_id":request_id,"error":str(exc)}),flush=True)
+                self.reply(500,{"error":f"{type(exc).__name__}: {exc}","request_id":request_id})
+    server=ThreadingHTTPServer(("127.0.0.1",a.port),Handler)
     print(json.dumps(health),flush=True);print(f"Ready: http://127.0.0.1:{a.port}",flush=True)
     try:server.serve_forever()
     finally:server.server_close()

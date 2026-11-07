@@ -14,7 +14,7 @@ def run_jobs(jobs,output,generator,segmenter,max_steps=40):
         directory=output/job["id"];directory.mkdir(parents=True,exist_ok=True)
         if (directory/"DONE.json").is_file():continue
         tree=PrefixTree(max_steps);results=[];unique_successes=set()
-        for attempt in range(job["attempts"]):
+        for attempt in range(job.get("attempt_start",0),job.get("attempt_start",0)+job["attempts"]):
             location=directory/f"try_{attempt:03d}"
             prefix=tree.select() if job["mode"]=="search" else None
             if (location/"result.json").is_file() and not read_json(location/"result.json").get("error"):

@@ -92,7 +92,7 @@ def measure(points):
 
 class SamClient:
     def __init__(self,url="http://127.0.0.1:8001"):
-        self.url=url.rstrip("/"); self.client=httpx.Client(timeout=180.,trust_env=False)
+        self.url=url.rstrip("/"); self.client=httpx.Client(timeout=httpx.Timeout(660.,connect=10.),trust_env=False)
     def health(self):
         r=self.client.get(self.url+"/health");r.raise_for_status();h=r.json()
         if h.get("backend")!="sam3.1_detector" or not h.get("ready"):

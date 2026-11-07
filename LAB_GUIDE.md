@@ -30,110 +30,83 @@ withdrawal. The nominal hole is 28 mm wide, floor 8 mm, rim 50 mm above the tabl
 The new environment uses a 1 ms timestep and a 2000 N/m finger servo spring;
 these changes do not apply to the old baseline.
 
-## One-command experiment on four H100 80GB GPUs
+## Success-first four-GPU experiment (v2, 2026-11-07)
 
-After applying the auto-pipeline patch to the existing offline bundle, run on
-the **GPU instance**. Existing SAM on GPU 1 can stay running. Stop the old Qwen
-server in Terminal B and old sampling jobs first; the pipeline loads its own
-three policy replicas and does not use port 8000. No dependency reinstall or
-new weights are required. If SAM is not running, the pipeline starts and owns
-its own SAM process, using the existing `.venv-sam` and checked weights.
+The old v1 flow incorrectly allowed warm-up and fixed-scene RL with ZERO
+successes. Do not resume that flow. Use a NEW output directory with this patch;
+old evidence and checkpoints remain untouched. No new packages or weights.
 
-```bash
-cd /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-offline-20261106
-bash scripts/start_lab_all.sh runs/lab_auto/fixed_seed0
-```
-
-The launcher survives terminal disconnection. Repeating the **same command and
-options** after interruption resumes completed jobs and committed optimizer
-checkpoints. A file lock prevents concurrent pipelines writing to the same
-output. It never terminates a pre-existing external service. To use a changed
-budget or changed source code, choose a new output directory; configuration
-changes are rejected on an existing run instead of silently mixing experiments.
-
-GPU assignment: GPU 1 runs SAM; GPUs 0, 2, 3 run independent policy replicas
-for mining/evaluation, then synchronized replicas of **one shared policy** for
-SFT/GRPO. During each GRPO update all three ranks generate from the same weights,
-task and initial scene. Their six total rollouts form one reward group. Gradient
-sums are normalized by the global group size, not independent per-GPU training.
-Variable trajectory lengths and ranks with no local gradient are supported.
-
-Automatic stages, in order:
-
-1. Check available GPU memory and disk; check rendering, camera visibility and
-   physical feasibility. These scripted diagnostics are NOT training data.
-2. A three-rank visual training smoke test: real SAM + rendered images, Qwen
-   generation, LoRA backward, and synchronized optimizer step. Discard these
-   smoke weights and trajectories before starting the experiment.
-3. Measure the base policy on train scene seed 0, three independent attempts
-   per primitive; then prefix search up to 24 attempts per task. Stop each search
-   at two distinct, valid, model-generated successful action sequences.
-4. If any task lacks two successes, run eight GRPO warm-up updates, emphasizing
-   unresolved tasks, then run another bounded search with the warm-up policy.
-5. Deduplicate self-success actions from base trials, both searches and warm-up
-   rollouts. Exclude failed, invalid, assisted, test and interrupted episodes.
-   Run one SFT epoch on the resulting data. If no eligible success exists, skip
-   SFT explicitly and continue dense-reward GRPO from the warm-up checkpoint;
-   never insert a scripted demonstration or label a failed rollout successful.
-6. Run 12 GRPO updates on seed 0, then 16 updates on train seeds 0, 1, 2, 3.
-   The same four primitives are trained; `rack_transfer` is never trained.
-7. Compare base, SFT (if available), fixed-scene RL and diverse-scene RL on four
-   primitive tasks, validation seeds 0 and 1, two attempts each. Select by macro
-   success rate, then mean reward. Test scenes and the composition are excluded
-   from this choice. It is possible that the base model remains the best.
-8. Evaluate base and selected policy on all five tasks, test seeds 0, 1, 2,
-   two attempts each. Also repeat the selected policy on train scene seed 0.
-   Split-specific scene generation keeps train/validation/test scenes distinct.
-9. Export at most one verified successful video per task, preferring final
-   fixed-scene/evaluation successes. Earlier mining successes are explicitly
-   attributed to their source checkpoint/search; they are not final-policy
-   success-rate evidence. Failed or divergent replays do not count as success
-   videos. If a task never succeeds, report `no_success` instead of fabricating
-   a video. A different-seed fallback is recorded in the video index.
-
-Normal execution has a maximum of **559 model episodes** with these defaults
-(early search stops reduce this; interrupted retries are additional). Each has
-at most 40 actions except the three one-action training probes. This is a
-bounded first experiment, not a promise of overnight success or the paper's
-training scale. Actual time depends on model/SAM throughput and trajectory
-length. At least 48 GiB free on each policy GPU and 30 GiB free disk are checked.
+Run on the GPU instance, from the project directory:
 
 ```bash
-cat runs/lab_auto/fixed_seed0/status.json
-tail -n 30 runs/lab_auto/fixed_seed0/launcher.log
-cat runs/lab_auto/fixed_seed0/report.json
-cat runs/lab_auto/fixed_seed0/videos/index.json
+bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v2
 ```
 
-The coordinator emits a heartbeat every 30 seconds; individual action progress
-is in `logs/*.log`. `REPORT.md` and `report.json` compare base/final success
-counts. `selection.json` records validation scores. `rl_fixed/metrics` and
-`rl_diverse/metrics` record rewards, advantages and whether an optimizer update
-was possible; equal-reward valid groups yield no policy gradient.
+GPU 1 hosts managed SAM; GPUs 0, 2, 3 host base-model policy replicas for
+sampling. Stop old Qwen/training processes on those policy GPUs first. The
+pipeline now requires its own SAM process, stores `logs/sam.log`, checks its
+process and health, and stops if it fails. If port 8001 is already occupied,
+stop your previous SAM terminal before launching, or explicitly select a free
+local port with `--sam-url http://127.0.0.1:8002`. It never kills external jobs.
+SAM inference remains serialized; threaded HTTP handling keeps health requests
+responsive. Requests log start/end/error and CUDA allocation. A 120-second queue
+limit and 660-second client deadline report failure rather than invent masks.
+This improves diagnosis, not proof that the previous service failure is fixed.
 
-For budget inspection without loading models:
+Stages and mandatory admission:
+
+1. Scripted physics/camera checks establish environment feasibility only.
+2. Base-model independent trials: 3 attempts per task, train scene seed 0.
+3. Search the same scene in batches of 16 attempts, at most 4 batches per task.
+   Only unfinished tasks continue. New batches use distinct sampling seeds;
+   physics scene seed stays fixed. Replay prior model-generated prefixes within
+   a batch, without scripted/oracle actions or policy updates. If the first
+   batch yields zero verified successes across ALL tasks, stop for debugging.
+4. Require at least 10 different successful action sequences PER task. Each
+   must have zero invalid actions, no demonstration, visual SAM/RGB-D inputs,
+   no adapter, and a full physical replay matching every stored state.
+5. Independently run the unchanged base policy from initial states 10 times per
+   task, with new sampling seeds and NO prefix replay. Require at least 3 valid,
+   replay-verified complete successes per task and no infrastructure errors.
+   This is a pragmatic small-run admission rule, not evidence of generalization.
+6. Only when BOTH checks pass: optimizer smoke, self-success SFT, 12 fixed-scene
+   GRPO updates, then 16 updates across train seeds 0-3. The smoke weights are
+   discarded. Every training entry checks the gate and hashes of its evidence.
+7. Select base/SFT/fixed-RL/diverse-RL using four-task validation; evaluate all
+   five tasks on held-out scenes, and replay successful episodes as videos.
+   `rack_transfer` never enters acquisition, qualification, SFT or RL.
+
+No warm-up fallback exists. A failed gate ends at `awaiting_success` and creates
+`success_gate.json`, `acquisition_diagnostics.json`, `report.json` and any available
+verified success videos. It does not start SFT, RL or the optimizer smoke.
+These partial results are sufficient to debug the next batch. Repeating the
+same command resumes interrupted work but does not extend an exhausted budget.
+New code/settings require a new output directory. After a gate passes, training
+continues automatically; no additional approval is needed.
+
+The prompt now explains grasp orientation, surface-coordinate uncertainty,
+object/TCP offsets, and revising unreachable poses. This is procedural prompt
+assistance, recorded by `prompt_sha256`; it is not a demonstrated trajectory or
+a hidden controller. Its effect on Qwen success rates has NOT been measured
+locally. The base policy for this release differs from the previous prompt.
 
 ```bash
-bash scripts/lab.sh all --plan
+cat runs/lab_success_first/fixed_seed0_v2/status.json
+cat runs/lab_success_first/fixed_seed0_v2/success_gate.json
+tail -n 30 runs/lab_success_first/fixed_seed0_v2/launcher.log
+.venv-linux/bin/python scripts/collect_success_first.py
 ```
 
-For a larger **new** experiment, for example:
+The collector packages counts, service logs, top candidate trajectories and
+initial input images into `success_first_review_*.tar.gz` in the current directory.
+It does not perform inference or modify experiments. Large omitted files are
+listed. Upload this archive for diagnosis, especially at `awaiting_success`.
 
-```bash
-bash scripts/start_lab_all.sh runs/lab_auto/extended_seed0 \
-  --search-attempts 48 --warmup-updates 16 --fixed-updates 24 --diverse-updates 64
-```
-
-Training resumes the optimizer plus adapter at atomic checkpoints. GRPO saves
-every update; SFT saves every four batches and at the final batch. Interrupted
-uncommitted updates are regenerated; their old files are kept as `.incomplete-*`
-and excluded from SFT. The inherited single-GPU CLI below remains available,
-but its adapter-only warm-start differs from this optimizer-aware resume.
-
-This follows the self-success mining, SFT, and terminal dense-reward GRPO recipe
-in [ZAP section 3.3](https://arxiv.org/html/2610.35817v3#S3.SS3), with the explicit
-scale/architecture differences above. The reward ladder below is evaluated on
-the final state, not repeatedly accumulated for approaching the same object.
+Use `bash scripts/lab.sh all --plan` for budgets. The upper bound is 615 model
+episodes, excluding interrupted retries; acquisition can stop much earlier.
+The following manual CLI sections document individual components. Direct
+`train`, `grpo` and `sft` commands bypass the coordinator and must NOT be used
+for this success-first campaign. The supported command is `start_lab_all.sh`.
 
 ## 1. Upload and prepare (networked CPU instance)
 
@@ -386,30 +359,7 @@ bash scripts/lab.sh grpo --adapter checkpoints/YOUR_SFT_RUN/epoch_001 --updates 
 
 The four-update pilot trains once on each task and saves an adapter after every
 update. Increase to `--updates 20 --group-size 8` only after this pilot works.
-For a short GRPO warm-up directly from the base model (the paper's success-mining
-stage), omit `--adapter`; it is an explicit action, never started by sampling.
-`--scene-seeds 0 1 2` expands the training scenes. `rack_transfer` is not accepted
-by the training CLI. To continue from an adapter, pass `--adapter` to a new run;
-this warm-starts weights with a new optimizer, **not** an exact optimizer resume.
-
-Reward ladder (one terminal score, not cumulative collection of repeated bonuses):
-
-| Progress | Score before costs |
-|---|---:|
-| Approach target | 0 to 0.15 |
-| Contact grasp | at least 0.20 |
-| Grasp and lift | up to 0.55 |
-| Transport toward goal | up to 0.90 |
-| Align and insert | up to 0.90 |
-| Grasp, unscrew, then separate cap | up to 0.90 |
-| Full stable task success | 5.00 |
-
-Subtract 0.01 per action and 0.05 per rejected action. GRPO computes relative
-advantages within each same-scene group; an invalid turn gets advantage -1
-regardless of final success. Equal-reward groups yield zero group advantage.
-The loss uses clipped token probability ratios (epsilon .2), equal rollout
-weighting, and beta=0 (no reference KL). Stored generation token IDs ensure
-training scores the actual sampled responses, including EOS/truncation.
+Do not run base-model GRPO before the success gate. Use the coordinator above.
 
 ## 7. Compare trained policy and held-out composition
 

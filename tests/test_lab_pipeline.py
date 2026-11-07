@@ -139,42 +139,105 @@ def test_gradient_reduction_math_with_unequal_rank_work():
     with ThreadPoolExecutor(3) as pool:gradients=list(pool.map(worker,range(3)))
     assert all(torch.allclose(g,torch.tensor([28./3]),atol=1e-6) for g in gradients)
 
-@pytest.mark.parametrize("have_success",[True,False])
-def test_pipeline_sequences_training_and_holds_out_composition(tmp_path,monkeypatch,have_success):
+@pytest.mark.parametrize("mode",["zero","duplicate","missing_task","bad_replay","low_independent","pass"])
+def test_success_gate_controls_every_optimizer_step(tmp_path,monkeypatch,mode):
     import tube_agent.lab.pipeline as pipeline
+    import tube_agent.lab.success_gate as gate
     from types import SimpleNamespace
     monkeypatch.setattr(pipeline,"gpu_check",lambda a:{})
     monkeypatch.setattr(pipeline.shutil,"disk_usage",lambda path:SimpleNamespace(free=100*2**30))
     monkeypatch.setattr(pipeline,"make_videos",lambda runner:{})
-    a=pipeline.parser().parse_args([]);a.output=tmp_path
+    monkeypatch.setattr(gate,"replay_check",lambda path: mode!="bad_replay")
+    a=pipeline.parser().parse_args(["--min-successes","2","--search-attempts","2","--search-rounds","2",
+                                   "--qualification-attempts","3","--qualification-successes","2"])
+    a.output=tmp_path
     class FakeRunner:
         def __init__(self):self.a=a;self.output=tmp_path;self.training=[];self.samples=[]
         def status(self,*args,**kwargs):pass
         def ensure_sam(self):pass
         def step(self,*args,**kwargs):pass
         def train(self,name,stage,**kwargs):
-            assert "rack_transfer" not in kwargs.get("tasks",[])
+            gate.require_gate(tmp_path)
             self.training.append((name,stage,kwargs))
             return tmp_path/name/"step_00001" if stage!="smoke" else None
         def sample(self,name,adapter,job_list):
-            self.samples.append((name,job_list))
-            directory=tmp_path/name
+            self.samples.append((name,job_list));directory=tmp_path/name
             for job in job_list:
-                write_json(directory/job["id"]/"summary.json",{"job":job,"episodes":1,"successes":int(have_success),
-                           "errors":0,"mean_reward":float(have_success),"invalid_actions":0,"unique_successes":0})
-                result=success(task=job["task"],split=job["split"],success=have_success)
-                episode=directory/job["id"]/"try_000"
-                write_json(episode/"result.json",result)
-                (episode/"trajectory.jsonl").write_text(json.dumps({"messages":[{"role":"user","content":job["task"]}],
-                                                                   "raw_response":'{"action":"finish"}'})+"\n")
+                wins=0
+                for i in range(job["attempts"]):
+                    won=mode!="zero" and not (mode=="missing_task" and job["task"]=="insert")
+                    if mode=="low_independent" and name=="qualification":won=i==0
+                    wins+=int(won)
+                    result=success(task=job["task"],split=job["split"],seed=job["seed"],success=won,
+                                   generator_provenance={"adapter":None,"training":False},search_prefix_length=0)
+                    episode=directory/job["id"]/f"try_{i:03d}"
+                    write_json(episode/"result.json",result)
+                    action={"action":"gripper","opening":0. if mode=="duplicate" else i*.01}
+                    (episode/"trajectory.jsonl").write_text(json.dumps({"action":action,
+                        "messages":[{"role":"user","content":job["task"]}],"raw_response":json.dumps(action)})+"\n")
+                write_json(directory/job["id"]/"summary.json",{"job":job,"episodes":job["attempts"],"successes":wins,
+                    "errors":0,"mean_reward":float(wins),"invalid_actions":0,"unique_successes":wins})
             return directory
     runner=FakeRunner();pipeline.execute_pipeline(runner)
-    names=[name for name,_,_ in runner.training]
-    assert names[:2]==["training_smoke","warmup"]
-    assert ("sft" in names)==have_success
-    assert names[-2:]==["rl_fixed","rl_diverse"]
-    assert runner.training[-1][2]["seeds"]==[0,1,2,3]
+    if mode!="pass":
+        assert runner.training==[]
+        assert read_json(tmp_path/"report.json")["status"]=="awaiting_success"
+        assert not read_json(tmp_path/"success_gate.json")["passed"]
+    else:
+        assert [name for name,_,_ in runner.training]==["training_smoke","sft","rl_fixed","rl_diverse"]
+        assert read_json(tmp_path/"report.json")["status"]=="completed"
+        evidence=read_json(tmp_path/"success_gate.json")["approved"]["pick"][0]
+        Path(evidence["trajectory"]).write_text("tampered")
+        with pytest.raises(RuntimeError,match="evidence changed"):gate.require_gate(tmp_path)
     for name,job_list in runner.samples:
         if name not in ("base_test","final_test"):
             assert all(j["task"]!="rack_transfer" for j in job_list)
-    assert read_json(tmp_path/"report.json")["status"]=="completed"
+    qualification=[j for name,items in runner.samples if name=="qualification" for j in items]
+    assert all(j["attempt_start"]==100000 and j["mode"]=="independent" for j in qualification)
+
+
+def test_runner_refuses_training_without_gate(tmp_path):
+    from tube_agent.lab.pipeline import Runner,parser
+    a=parser().parse_args([]);a.output=tmp_path
+    runner=Runner(a)
+    for name,stage in (("training_smoke","smoke"),("sft","sft"),("rl_fixed","grpo")):
+        with pytest.raises(RuntimeError,match="gate.*missing"):runner.train(name,stage)
+    assert runner.children==[]
+
+
+def test_worker_uses_fresh_sampling_rng_in_later_batches(tmp_path,monkeypatch):
+    from tube_agent.lab.worker import run_jobs
+    import tube_agent.lab.run as run
+    calls=[]
+    def episode(task,split,seed,attempt,directory,*args,**kwargs):
+        calls.append((seed,attempt))
+        result=success(success=False,steps=1,reward=0.)
+        write_json(Path(directory)/"result.json",result)
+        (Path(directory)/"trajectory.jsonl").write_text("")
+        return result,[]
+    monkeypatch.setattr(run,"episode",episode)
+    run_jobs(jobs(["pick"],[0],"train",2,attempt_start=1016),tmp_path,None,None)
+    assert calls==[(0,1016),(0,1017)]
+
+
+def test_replay_checker_detects_physical_divergence(tmp_path):
+    from tube_agent.lab.success_gate import replay_check
+    from tube_agent.lab.env import LabEnv
+    from tube_agent.lab.sanity import commands
+    from tube_agent.lab.run import state
+    env=LabEnv("pick","train",0)
+    trajectory=[]
+    try:
+        for action in commands(env):
+            _,feedback,_=env.step(action)
+            trajectory.append({"step":env.steps,"action":action,"feedback":feedback,"state_after":state(env)})
+        result={**env.result(),"task":"pick","split":"train","seed":0,"max_steps":40,
+                "environment_version":env.VERSION,"action_protocol":env.ACTION_PROTOCOL}
+    finally:env.close()
+    write_json(tmp_path/"result.json",result)
+    path=tmp_path/"trajectory.jsonl"
+    path.write_text("".join(json.dumps(row)+"\n" for row in trajectory))
+    assert replay_check(tmp_path)
+    trajectory[0]["state_after"][0]+=.1
+    path.write_text("".join(json.dumps(row)+"\n" for row in trajectory))
+    with pytest.raises(ValueError,match="diverged"):replay_check(tmp_path)

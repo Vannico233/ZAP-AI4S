@@ -1,5 +1,40 @@
 # Lab validation - 2026-11-07
 
+## Success-first correction (2026-11-07, supersedes v1 scheduling)
+
+The prior automatic pipeline violated the requested acquisition-before-training
+order: eight warm-up updates and one fixed-scene update occurred with zero
+complete visual successes. This release removes that fallback, changes the
+prompt, requires a new output path and does not reuse the failed run's adapters.
+
+Default admission: 10 distinct fully successful visual trajectories per task,
+zero invalid actions, no demonstrations, base policy only; every trajectory
+physically replayed with state comparisons. Then 10 new independent trials per
+task must yield at least 3 eligible replay-verified successes and zero errors.
+All four tasks must pass before ANY optimizer step, including smoke. Evidence
+hashes are rechecked at each training entry. Replay or infrastructure failure
+never becomes a training success. No-success first-batch acquisition stops
+for debugging; exhausted budgets also stop without training.
+
+Local verification: `pytest -q --basetemp=.bootstrap-success-first-full`
+returned **125 passed, 1 skipped**. The skip is Linux distributed transport
+validation unavailable on the Windows host. Tests cover zero successes,
+duplicate sequences, a missing task, divergent replay, low independent yield,
+positive stage ordering, altered source evidence, a direct training bypass
+attempt, distinct batch sampling seeds, physical replay and the existing
+physics/vision/LoRA regressions. Loopback HTTP tests ran outside the sandbox.
+Python 3.11 syntax checks passed. Local tiny-model gradient tests are NOT
+full Qwen3.5-4B or H100 training acceptance.
+
+SAM now has managed process logs and request start/end/error records. HTTP
+health can respond during serialized detector inference. This addresses missing
+diagnostics; it does not establish or prove a repair for the previous unexplained
+SAM outage. The new prompt and full native SAM/4B behavior need GPU-server runs.
+
+Everything below is historical validation of earlier releases, not current
+success-first scheduling or evidence of visual-policy task success.
+
+
 ## Four-GPU automatic experiment release
 
 Full local regression: **118 passed, 1 skipped** in 87.78 seconds. The skipped

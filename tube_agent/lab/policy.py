@@ -32,6 +32,20 @@ The rack hole is at the rack's horizontal center. Estimate its position from vis
 The screw task uses a fixed tube fixture and a right-hand, one-turn thread with
 6 mm lead. Positive world-Z rotation unscrews; regrasp within arm joint limits.
 Use the current instruction, images and measured feedback to choose each action.
+Keep fingers downward [3.14159265,0,yaw] for approaching a horizontal tube.
+Align the gripper closing direction across the tube, not along its long axis.
+Start above the object with open fingers, descend, close, then lift with clearance.
+For a horizontal tube, yaw can follow atan2(axis_y,axis_x), modulo pi;
+choose the equivalent yaw with smaller absolute value to reduce wrist rotation.
+Surface centers are not grasp centers: use both views and the known radius.
+For cap-up insertion, change orientation above the rack before descending;
+the TCP is not the tube bottom. Account for the held object's offset.
+For unscrewing, use several positive yaw increments and regrasp when necessary.
+Keep the cap between the fingers; lift only after completing the full turn.
+If reached=false, the motion may have stopped part way. Read current TCP and
+revise the waypoint or orientation instead of repeating the same failed pose.
+Opening changes do not attach an object. Check subsequent images for motion.
+Lift with a margin beyond the task's minimum, then verify the object follows.
 Submit finish when the requested task is complete. Steps_left is your remaining budget.
 """
 

@@ -9,13 +9,13 @@ See [LAB_VALIDATION.md](LAB_VALIDATION.md) for tested scope and pending H100 che
 This is a scaled method reproduction, not a claim to the paper's benchmark scores.
 
 **Four-H100 automatic experiment:** after applying the offline auto-pipeline
-patch, run `bash scripts/start_lab_all.sh runs/lab_auto/fixed_seed0` on the GPU
-instance. GPU 1 serves SAM; GPUs 0/2/3 mine, evaluate and synchronously train one
-policy. The sequence includes fixed-seed search, GRPO warm-up, self-success SFT,
-two RL phases, held-out evaluation, resumable checkpoints and verified success
-videos when available. Read the one-command section in [LAB_GUIDE.md](LAB_GUIDE.md)
-for budgets, progress paths and the distinction between execution completion and
-task success.
+patch, run `bash scripts/start_lab_all.sh runs/lab_success_first/fixed_seed0_v2`
+on the GPU instance. SAM runs on GPU 1; GPUs 0, 2, 3 sample and later train one
+shared policy. **No optimizer updates before success admission:** each task
+needs 10 unique, physically replay-verified visual successes and at least 3/10
+fresh independent successes. Zero-success acquisition stops for diagnosis.
+The v1 zero-success warm-up/RL fallback has been removed. Use a new output path.
+See [LAB_GUIDE.md](LAB_GUIDE.md) for exact criteria, artifacts and commands.
 
 ## Legacy two-task oracle-state baseline
 
