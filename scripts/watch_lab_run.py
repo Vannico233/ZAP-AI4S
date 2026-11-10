@@ -29,8 +29,11 @@ def launcher_alive(pid, root, proc_root=Path("/proc")):
         if state in ("Z", "X"):
             return False
         args = (folder / "cmdline").read_bytes().decode(errors="replace").rstrip("\0").split("\0")
-        is_pipeline = any(args[i:i+2] == ["-m", "tube_agent.lab.pipeline"] for i in range(len(args)-1))
-        is_wrapper = any(arg.endswith("scripts/lab.sh") for arg in args) and "all" in args
+        is_pipeline = any(args[i] == "-m" and args[i+1] in
+                          ("tube_agent.lab.pipeline", "tube_agent.lab.pick_ablation", "tube_agent.curriculum.pipeline")
+                          for i in range(len(args)-1))
+        is_wrapper = any(arg.endswith("scripts/lab.sh") for arg in args) and any(
+            command in args for command in ("all", "pick-ablation", "tube-curriculum"))
         if not (is_pipeline or is_wrapper):
             return False
         for index, arg in enumerate(args):
@@ -134,6 +137,26 @@ def progress(root):
         for name in item:
             item[name] += value.get(name, 0)
     config = read_json(root / "config.json")
+    if config.get("version") == "tube_curriculum_v1":
+        committed = []
+        for path in sorted((root/"warmup/metrics").glob("round_*.json")):
+            value = read_json(path)
+            if (root/"warmup/checkpoints"/f"step_{value.get('round', 0):05d}/COMPLETE.json").exists():
+                committed.append(value)
+        done = sum(v["episodes"] for v in committed)
+        steps = committed[-1]["optimizer_steps_total"] if committed else 0
+        lines = [f"[WARMUP] committed_rounds={len(committed)}/18 episodes={done}/960 optimizer_steps={steps}"]
+        search = read_json(root/"search/state.json")
+        if search:
+            lines.append(f"[SEARCH] expansions={len(search['expansions'])}/32 continuations={4*len(search['expansions'])}/128")
+        data = read_json(root/"data/manifest.json")
+        if data:
+            lines.append(f"[SFT_DATA] unique_responses={data['samples']} successes={data['successes_by_task']} missing_tasks={data['missing_tasks']}")
+        for node in ("original", "after_warmup", "after_sft"):
+            results = [read_json(p) for p in (root/"evaluation"/node).glob("*_eval_*/result.json") if '.incomplete-' not in str(p)]
+            if results:
+                lines.append(f"[EVAL] {node}: completed={len(results)}/120 successes={sum(bool(r.get('success')) for r in results)} errors={sum(bool(r.get('error')) for r in results)}")
+        return lines
     if config.get("pose_probe"):
         stages["pose_probe"]  # Show 0/12 before the first episode completes.
     lines = []

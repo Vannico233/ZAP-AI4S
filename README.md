@@ -1,5 +1,14 @@
 # ZAP-AI4S: four-task visual laboratory reproduction
 
+**Upright-tube curriculum (2026-11-10):** the new requested experiment is documented
+in [docs/tube-curriculum-v1.md](docs/tube-curriculum-v1.md). It rebuilds T1-T4 around
+upright tubes, uses 32 train/30 held-out scenes per task, 960 warm-up episodes,
+a shared 128-continuation search budget, two SFT epochs from `after_warmup`, and
+fixed `original`/`after_warmup`/`after_sft` evaluation. **No main RL is launched.**
+Start with `bash scripts/start_tube_curriculum.sh runs/tube_curriculum/v1` on the
+existing four-H100 instance after updating the shared checkout. Existing older
+recipes below remain available for historical experiments.
+
 **New experiments:** use [LAB_GUIDE.md](LAB_GUIDE.md) for `pick`, `transport`,
 `insert`, `unscrew`, and held-out `rack_transfer`. The new `tube_agent.lab` flow
 uses two RGB-D views, native SAM 3.1, Qwen3.5-4B, fixed-seed sampling, model-prefix

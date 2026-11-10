@@ -1,0 +1,1764 @@
+{
+  "physical_scenes": 248,
+  "successes": 248,
+  "policy": "privileged_physics_diagnostic_NOT_Qwen",
+  "training_eligible": false,
+  "physics_configuration_matches_current": true,
+  "nonphysics_configuration_added_after_sweep": [
+    "interface metadata",
+    "observation metadata",
+    "search settled-node threshold"
+  ],
+  "sweep_config_sha256": "1e52494fef2426c9ddf893ff371f3297fb9475dcd09fab8272e1d87aeeabbff0",
+  "counts": {
+    "T1/train": 32,
+    "T1/eval": 30,
+    "T2/train": 32,
+    "T2/eval": 30,
+    "T3/train": 32,
+    "T3/eval": 30,
+    "T4/train": 32,
+    "T4/eval": 30
+  },
+  "scene_results": [
+    {
+      "scene": "T1_eval_000",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_001",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_002",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_003",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_004",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_005",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_006",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_007",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_008",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_009",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_010",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_011",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_012",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_013",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_014",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_015",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_016",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_017",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_018",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_019",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_020",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_021",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_022",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_023",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_024",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_025",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_026",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_027",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_028",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_eval_029",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_000",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_001",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_002",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_003",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_004",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_005",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_006",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_007",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_008",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_009",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_010",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_011",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_012",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_013",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_014",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_015",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_016",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_017",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_018",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_019",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_020",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_021",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_022",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_023",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_024",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_025",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_026",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_027",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_028",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_029",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_030",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T1_train_031",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_000",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_001",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_002",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_003",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_004",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_005",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_006",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_007",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_008",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_009",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_010",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_011",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_012",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_013",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_014",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_015",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_016",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_017",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_018",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_019",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_020",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_021",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_022",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_023",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_024",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_025",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_026",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_027",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_028",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_eval_029",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_000",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_001",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_002",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_003",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_004",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_005",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_006",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_007",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_008",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_009",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_010",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_011",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_012",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_013",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_014",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_015",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_016",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_017",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_018",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_019",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_020",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_021",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_022",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_023",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_024",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_025",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_026",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7250000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_027",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_028",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_029",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7230000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_030",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T2_train_031",
+      "success": true,
+      "steps": 2,
+      "stable_seconds": 0.7240000000000005,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_000",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_001",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_002",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_003",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_004",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_005",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_006",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_007",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_008",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_009",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_010",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_011",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_012",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_013",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_014",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_015",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_016",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_017",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_018",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_019",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_020",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_021",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_022",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_023",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_024",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_025",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_026",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_027",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_028",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_eval_029",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_000",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_001",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_002",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_003",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_004",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_005",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_006",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_007",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_008",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_009",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_010",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_011",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_012",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_013",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_014",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_015",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_016",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_017",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_018",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_019",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_020",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_021",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_022",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.941999999999897,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_023",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_024",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_025",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_026",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_027",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_028",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_029",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_030",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T3_train_031",
+      "success": true,
+      "steps": 5,
+      "stable_seconds": 1.9429999999998968,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_000",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_001",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_002",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_003",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_004",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_005",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_006",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_007",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_008",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_009",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_010",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_011",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_012",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_013",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_014",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_015",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_016",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_017",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_018",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_019",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_020",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_021",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_022",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_023",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_024",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_025",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_026",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_027",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_028",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_eval_029",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_000",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_001",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_002",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_003",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_004",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_005",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_006",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_007",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_008",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_009",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_010",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_011",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_012",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_013",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_014",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_015",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_016",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_017",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_018",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_019",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_020",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_021",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_022",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_023",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_024",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_025",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_026",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_027",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_028",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_029",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_030",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    },
+    {
+      "scene": "T4_train_031",
+      "success": true,
+      "steps": 9,
+      "stable_seconds": 1.9379999999998974,
+      "failure_cost": 0.0
+    }
+  ],
+  "camera_rendered_scenes": 4,
+  "native_sam_validated_locally": false,
+  "qwen_h100_training_run_locally": false
+}

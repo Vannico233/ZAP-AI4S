@@ -61,8 +61,11 @@ case "$STAGE" in
     exec "$PY" -u -m tube_agent.lab.pipeline "$@" ;;
   pick-ablation)
     exec "$PY" -u -m tube_agent.lab.pick_ablation "$@" ;;
+  tube-curriculum)
+    exec "$PY" -u -m tube_agent.curriculum.pipeline "$@" ;;
   *)
-    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|pose-check|command-probe|render-check|vision-check|check|sample|search|export|sft|grpo|eval|replay|all} [options]"
+    echo "Usage: bash scripts/lab.sh {prepare|sam|model|physics|pose-check|command-probe|render-check|vision-check|check|sample|search|export|sft|grpo|eval|replay|all|pick-ablation|tube-curriculum} [options]"
+    echo "tube-curriculum: fixed T1-T4 warm-up -> search -> SFT -> three-node evaluation; no main RL."
     echo "all: resumable full experiment, SAM on GPU 1 and synchronized policies on GPUs 0,2,3."
     echo "sam: GPU 1; model: GPU 0; sft/grpo: GPU 2. Override SAM_GPU, QWEN_GPU, TRAIN_GPU."
     echo "First run physics, then start sam + model in separate terminals, then check."

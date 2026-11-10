@@ -1,0 +1,156 @@
+{
+  "version": "tube_curriculum_v1",
+  "action_protocol": "zap_pose_v1",
+  "tasks": [
+    "T1",
+    "T2",
+    "T3",
+    "T4"
+  ],
+  "seeds": {
+    "train": 32,
+    "eval": 30,
+    "manifest_seed": 20261110
+  },
+  "geometry": {
+    "tube_radius": 0.012,
+    "tube_half_segment": 0.045,
+    "hole_half_width": 0.014,
+    "rack_outer_half_width": 0.035,
+    "floor_z": 0.008,
+    "source_rim_z": 0.026,
+    "target_rim_z": 0.05,
+    "source_xy": [
+      0.45,
+      -0.17
+    ],
+    "target_xy": [
+      0.45,
+      0.15
+    ],
+    "scene_xy_jitter": 0.012,
+    "grasp_tcp_above_floor": 0.092,
+    "initial_carry_bottom_z": 0.12,
+    "approach_bottom_z": 0.085,
+    "insert_initial_xy_jitter": 0.005
+  },
+  "success": {
+    "lift_m": 0.05,
+    "hold_s": 0.5,
+    "placement_hold_s": 1.0,
+    "horizontal_tolerance_m": 0.005,
+    "approach_z_tolerance_m": 0.005,
+    "tilt_deg": 8.0,
+    "target_depth_m": 0.042,
+    "depth_tolerance_m": 0.003,
+    "hole_geometry_tolerance_m": 0.0003,
+    "withdraw_m": 0.09,
+    "released_opening_m": 0.06,
+    "linear_speed_m_s": 0.03,
+    "angular_speed_rad_s": 0.3,
+    "grasp_contact_hold_s": 0.1,
+    "grasp_relative_speed_m_s": 0.03,
+    "grasp_relative_angular_speed_rad_s": 0.5,
+    "extraction_hold_s": 0.1,
+    "extraction_clearance_m": 0.005
+  },
+  "reward": {
+    "success": 5.0,
+    "progress_cap": 0.9,
+    "turn_cost": 0.01,
+    "invalid_cost": 0.1,
+    "failure_cost": 1.0,
+    "approach_scale_m": 0.3,
+    "horizontal_scale_m": 0.35,
+    "height_scale_m": 0.1,
+    "alignment_scale_m": 0.03,
+    "tilt_scale_deg": 45.0,
+    "T1": {
+      "approach": 0.2,
+      "grasp": 0.25,
+      "lift": 0.65
+    },
+    "T2": {
+      "grasp": 0.2,
+      "horizontal": 0.35,
+      "height": 0.2,
+      "upright": 0.15
+    },
+    "T3": {
+      "align": 0.2,
+      "pose": 0.15,
+      "depth": 0.35,
+      "release": 0.1,
+      "withdraw": 0.1
+    },
+    "T4": {
+      "approach": 0.1,
+      "grasp": 0.15,
+      "extract": 0.2,
+      "transport": 0.15,
+      "depth": 0.15,
+      "release": 0.075,
+      "withdraw": 0.075
+    }
+  },
+  "failure": {
+    "collision_force_n": 80.0,
+    "collision_hold_s": 0.03,
+    "drop_bottom_z": 0.003,
+    "drop_tilt_deg": 70.0
+  },
+  "policy": {
+    "max_steps": 40,
+    "max_context": 16384,
+    "max_new_tokens": 256,
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "top_k": 0,
+    "enable_thinking": false
+  },
+  "training": {
+    "base_rounds": 12,
+    "hard_rounds": 6,
+    "groups_per_task": 2,
+    "group_size": 8,
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "dtype": "bfloat16",
+    "warmup_lr": 1e-05,
+    "sft_lr": 0.0001,
+    "clip": 0.2,
+    "warmup_epochs_per_batch": 1,
+    "warmup_minibatch": 32,
+    "sft_epochs": 2,
+    "sft_batch": 16,
+    "max_grad_norm": 1.0,
+    "weight_decay": 0.01,
+    "advantage": "group_mean_centered_no_std",
+    "loss_normalization": "fixed_episode_token_budget",
+    "reference_kl": 0,
+    "turn_negative_advantage": false,
+    "failed_done_credit_clamp": false
+  },
+  "search": {
+    "max_continuations": 128,
+    "continuations_per_expansion": 4,
+    "max_nodes_per_task": 128,
+    "exploration": 0.45,
+    "same_failure_prune": 3,
+    "replay_atol": 1e-05
+  },
+  "evaluation": {
+    "temperature": 0.0,
+    "attempts_per_scene": 1,
+    "checkpoint_selection": false
+  },
+  "execution": {
+    "policy_gpus": [
+      0,
+      2,
+      3
+    ],
+    "sam_gpu": 1,
+    "sam_url": "http://127.0.0.1:8002"
+  }
+}
