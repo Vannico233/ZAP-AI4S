@@ -131,6 +131,7 @@ def export(source,output):
     print(json.dumps({"contributing_episodes":episode_count,"unique_actions":len(rows),"output":str(output)}))
 
 def main():
+    from .credit import turn_advantage
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("stage",choices=("export","sft","grpo"));p.add_argument("--source",type=Path)
     p.add_argument("--data",type=Path);p.add_argument("--output",type=Path,required=True)
@@ -138,6 +139,7 @@ def main():
     p.add_argument("--rank",type=int,default=16);p.add_argument("--learning-rate",type=float,default=1e-5)
     p.add_argument("--epochs",type=int,default=1);p.add_argument("--group-size",type=int,default=8)
     p.add_argument("--updates",type=int,default=20);p.add_argument("--seed",type=int,default=0)
+    p.add_argument("--failed-done-credit", choices=("legacy", "nonpositive"), default="legacy")
     p.add_argument("--tasks",nargs="+",choices=TRAIN_TASKS,default=list(TRAIN_TASKS))
     p.add_argument("--scene-seeds",nargs="+",type=int,default=[0]);p.add_argument("--max-steps",type=int,default=40)
     p.add_argument("--max-context",type=int,default=16384);p.add_argument("--sam-url",default="http://127.0.0.1:8001")
@@ -204,7 +206,8 @@ def main():
                 for i,rows in enumerate(trajectories):
                     for j,row in enumerate(rows):
                         value=float(adv[i])
-                        if row["feedback"].get("accepted") is False:value=-1.;invalid_turns+=1
+                        invalid_turns+=int(row["feedback"].get("accepted") is False)
+                        value=turn_advantage(row,value,a.failed_done_credit)
                         if value==0:continue
                         current=token_logps(model,*sample_inputs(processor,row,a.max_context))
                         loss=clipped_loss(current,old[i][j].to(model.device),value)/len(rows)/a.group_size

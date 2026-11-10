@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import random
 from .experiment import checkpoint,eligible,read_json,write_json,rows
+from .credit import turn_advantage, credit_metrics
 
 
 def task_schedule(path,tasks,updates):
@@ -59,6 +60,7 @@ def main():
     p.add_argument("--tasks",nargs="+",choices=("pick","transport","insert","unscrew"),default=["pick","transport","insert","unscrew"])
     p.add_argument("--task-schedule",type=Path)
     p.add_argument("--loss-normalization",choices=("grpo","dr_grpo"),default="grpo")
+    p.add_argument("--failed-done-credit", choices=("legacy", "nonpositive"), default="legacy")
     p.add_argument("--scene-seeds",nargs="+",type=int,default=[0]);p.add_argument("--seed",type=int,default=0)
     p.add_argument("--updates",type=int,default=24);p.add_argument("--group-size",type=int,default=6)
     p.add_argument("--epochs",type=int,default=1);p.add_argument("--batch-size",type=int,default=6)
@@ -197,19 +199,23 @@ def main():
                 for i,trajectory in enumerate(trajectories):
                     for j,row in enumerate(trajectory):
                         value=float(adv[rank*(a.group_size//world)+i])
-                        if row["feedback"].get("accepted") is False:value=-1.;invalid_turns+=1
+                        invalid_turns+=int(row["feedback"].get("accepted") is False)
+                        value=turn_advantage(row,value,a.failed_done_credit)
                         if value==0:continue
                         current=token_logps(model,*sample_inputs(processor,row,a.max_context))
                         if a.loss_normalization=="dr_grpo":
                             loss=dr_grpo_loss(current,old[i][j].to(device),value,a.max_steps*256)/a.group_size
                         else:loss=clipped_loss(current,old[i][j].to(device),value)/len(trajectory)/a.group_size
                         loss.backward();loss_sum+=float(loss.detach())
-                updated=optimize();stats=gather({"loss":loss_sum,"invalid_turns":invalid_turns})
+                credit=credit_metrics(trajectories,adv[rank*(a.group_size//world):(rank+1)*(a.group_size//world)],a.failed_done_credit)
+                updated=optimize();stats=gather({"loss":loss_sum,"invalid_turns":invalid_turns,**credit})
                 record(update+1,{"stage":"grpo","step":update+1,"task":task,"scene_seed":seed,
                     "total_updates":a.updates,"loss_normalization":a.loss_normalization,
                     "successes":sum(r["success"] for r in all_results),"group_size":a.group_size,
                     "rewards":[r["reward"] for r in all_results],"advantages":adv.tolist(),
                     "optimizer_step_taken":updated,
+                    "failed_done_credit":a.failed_done_credit,
+                    **{key:sum(r[key] for r in stats) for key in credit},
                     "loss":sum(r["loss"] for r in stats),"invalid_turns":sum(r["invalid_turns"] for r in stats),
                     "reward_terms":[r["reward_terms"] for r in all_results]},a.updates)
         barrier()
