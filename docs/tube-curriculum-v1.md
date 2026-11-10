@@ -29,6 +29,21 @@ runtime. The original model is resolved from the existing path:
 /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model
 ```
 
+For a GPU job entrypoint accepting an `sh` script, use the checked-in wrapper:
+
+```sh
+sh /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git/scripts/submit_tube_curriculum.sh
+```
+
+Its contents can also be pasted directly into the job's startup-script field.
+It activates the existing project environment, prints the Python environment,
+and launches this same experiment with the explicit model path. Live progress is
+shown in the job output and appended to the project's `start_self.log`. The
+wrapper waits for the experiment monitor to finish and preserves its exit code;
+it does not exit immediately after starting the background pipeline. No Conda
+environment from another project is required. Allocate all four H100 GPUs to the
+job and synchronize the code on the CPU instance before submitting it.
+
 It records the exact resolved directory and hashes model, tokenizer and processor
 files; it does not substitute a checkpoint with a `-Base` suffix. SAM occupies
 GPU 1 and policy replicas occupy GPUs 0/2/3. Stop prior experiment/services before
