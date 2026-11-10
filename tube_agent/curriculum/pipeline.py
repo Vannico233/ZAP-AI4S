@@ -16,6 +16,30 @@ from tube_agent.model_utils import DEFAULT_MODEL, resolve_model
 from .config import DEFAULT, ROOT, TASKS, load, digest, file_digest, scene_manifest, schedule, plan
 
 
+def distributed_command(module, *arguments):
+    # Python 3.11 argparse can abbreviate child --run to torchrun --run-path.
+    # End launcher options BEFORE the module, not after it.
+    return [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nproc_per_node=3",
+            "--max_restarts=0", "-m", "--", module, *map(str, arguments)]
+
+
+def validate_launch_arguments(output, model):
+    """Exercise the installed torchrun parser before expensive physics/model setup."""
+    from torch.distributed.run import get_args_parser
+    targets = [("tube_agent.curriculum.train", [stage]) for stage in ("smoke", "warmup", "sft")]
+    targets.append(("tube_agent.curriculum.search", []))
+    for module, stage in targets:
+        arguments = [*stage, "--run", str(output), "--model", str(model)]
+        command = distributed_command(module, *arguments)
+        try:
+            parsed = get_args_parser().parse_args(command[3:])
+        except SystemExit as exc:
+            raise RuntimeError(f"torchrun could not parse the {module} launch command") from exc
+        if not parsed.module or parsed.training_script != module or parsed.training_script_args != arguments:
+            raise RuntimeError(f"torchrun changed child arguments for {module}")
+    print(json.dumps({"event": "launch_arguments_validated", "commands": len(targets)}), flush=True)
+
+
 class CurriculumRunner(Runner):
     def start(self, name, command, gpus):
         provenance = self.output/"provenance.json"
@@ -56,9 +80,8 @@ class CurriculumRunner(Runner):
         raise RuntimeError("Managed SAM exited while loading; inspect logs/sam.log")
 
     def train_stage(self, stage):
-        self.step(stage, [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nproc_per_node=3",
-                         "--max_restarts=0", "-m", "tube_agent.curriculum.train", stage,
-                         "--run", str(self.output), "--model", self.a.model])
+        self.step(stage, distributed_command("tube_agent.curriculum.train", stage,
+                                            "--run", self.output, "--model", self.a.model))
 
     def evaluate(self, node):
         marker = self.output/"steps"/("evaluate_"+node+".json")
@@ -131,8 +154,7 @@ def execute(runner, config):
     runner.train_stage("smoke")
     runner.evaluate("original")
     runner.train_stage("warmup")
-    runner.step("search", [sys.executable, "-m", "torch.distributed.run", "--standalone", "--nproc_per_node=3",
-                           "--max_restarts=0", "-m", "tube_agent.curriculum.search", "--run", str(out), "--model", a.model])
+    runner.step("search", distributed_command("tube_agent.curriculum.search", "--run", out, "--model", a.model))
     runner.step("freeze_data", [sys.executable, "-m", "tube_agent.curriculum.data", "--run", str(out)], [a.policy_gpus[0]])
     available = read_json(out/"data/manifest.json")["samples"] > 0
     if available: runner.train_stage("sft")
@@ -166,6 +188,7 @@ def main():
     def interrupted(signum, frame): raise KeyboardInterrupt(f"Signal {signum}")
     signal.signal(signal.SIGTERM, interrupted)
     try:
+        validate_launch_arguments(a.output, a.model)
         try: revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         except (OSError, subprocess.CalledProcessError): revision = None
         provenance = {"git_revision": revision, "source_sha256": source_digest(), "config_sha256": digest(c), "model": model_reference(a.model)}

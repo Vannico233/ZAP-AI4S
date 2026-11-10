@@ -44,6 +44,21 @@ it does not exit immediately after starting the background pipeline. No Conda
 environment from another project is required. Allocate all four H100 GPUs to the
 job and synchronize the code on the CPU instance before submitting it.
 
+If an earlier job stopped with `ambiguous option: --run could match --run-path,
+--run_path`, update the checkout and use a new output directory:
+
+```sh
+TUBE_RUN_DIR=runs/tube_curriculum/v1_launchfix sh /inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git/scripts/submit_tube_curriculum.sh
+```
+
+The launcher now separates torchrun options from child-module arguments with
+`--` before the module name. This avoids Python 3.11 option-abbreviation conflicts
+in smoke, warm-up, SFT and search. All four commands are also checked with the
+installed PyTorch parser before physics or model loading. Reusing a directory
+from an older code revision is intentionally rejected by the frozen provenance
+check; preserve the old directory for diagnosis. The task configuration and
+sampling budgets are unchanged.
+
 It records the exact resolved directory and hashes model, tokenizer and processor
 files; it does not substitute a checkpoint with a `-Base` suffix. SAM occupies
 GPU 1 and policy replicas occupy GPUs 0/2/3. Stop prior experiment/services before

@@ -5,6 +5,7 @@ set -eo pipefail
 
 PROJECT_ROOT="/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git"
 MODEL_DIR="/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model"
+RUN_DIR="${TUBE_RUN_DIR:-runs/tube_curriculum/v1}"
 cd "$PROJECT_ROOT"
 
 {
@@ -16,7 +17,7 @@ cd "$PROJECT_ROOT"
     python -c "import sys; print(\"Python:\", sys.version); print(\"Environment:\", sys.prefix)"
 
     bash "$PROJECT_ROOT/scripts/start_tube_curriculum.sh" \
-        runs/tube_curriculum/v1 \
+        "$RUN_DIR" \
         --model "$MODEL_DIR"
 } 2>&1 | tee -a "$PROJECT_ROOT/start_self.log"
 '
