@@ -30,32 +30,49 @@ def checksum(arr):
     return hashlib.sha256(arr.tobytes()).hexdigest()
 
 
-def inspect_frames(first, repeat, env):
-    if [f["calibration"]["name"] for f in first] != ["top", "side"] or len(repeat) != 2:
+def inspect_frames(reads, env, folder, render_flags, messages):
+    if len(reads) != 3 or any([f["calibration"]["name"] for f in read] != ["top", "side"] for read in reads):
         raise RuntimeError("Expected the two production cameras")
-    audit = {}
-    for a, b in zip(first, repeat):
-        name = a["calibration"]["name"]
-        rgb, depth = a["rgb"], a["depth"]
-        if b["calibration"]["name"] != name:
-            raise RuntimeError("Repeat capture changed camera")
-        for frame in (a, b):
+    folder.mkdir(parents=True, exist_ok=False)
+    audit, errors = {}, list(messages)
+    for frames in zip(*reads):
+        name = frames[0]["calibration"]["name"]
+        details, differences = [], {}
+        for i, frame in enumerate(frames, 1):
             color, z = frame["rgb"], frame["depth"]
             far = env.model.stat.extent * env.model.vis.map.zfar
             if color.shape != (480,640,3) or color.dtype != np.uint8 or color.std() < 1:
-                raise RuntimeError(f"Invalid RGB image: {name}")
+                errors.append(f"Invalid RGB image: {name}, capture {i}")
             if (z.shape != (480,640) or not np.issubdtype(z.dtype,np.floating)
                     or not np.isfinite(z).all() or z.min() <= 0 or z.max() > far * 1.01
                     or np.ptp(z) < .01 or not np.any((z > .01) & (z < 3))):
-                raise RuntimeError(f"Invalid metric depth: {name}")
-        rgb_drift = float((np.max(np.abs(rgb.astype(np.int16)-b["rgb"].astype(np.int16)),axis=2) > 8).mean())
-        depth_drift = float((np.abs(depth-b["depth"]) > .001).mean())
-        if rgb_drift > .001 or depth_drift > .001:
-            raise RuntimeError(f"Unstable fixed pose: {name}: RGB={rgb_drift}, depth={depth_drift}")
+                errors.append(f"Invalid metric depth: {name}, capture {i}")
+            Image.fromarray(color).save(folder/f"{name}_{i}.png")
+            finite = z[np.isfinite(z)]
+            details.append({"capture": i, "rgb_sha256": checksum(color), "depth_sha256": checksum(z),
+                            "rgb_mean_channels": color.mean(axis=(0,1)).tolist(),
+                            "near_black_fraction": float((color.mean(axis=2)<3).mean()),
+                            "depth_finite_fraction": float(np.isfinite(z).mean()),
+                            "depth_range_m": [float(finite.min()),float(finite.max())] if finite.size else None})
+        for left, right in ((0,1),(1,2),(0,2)):
+            a, b = frames[left], frames[right]
+            rgb_delta = np.abs(a["rgb"].astype(np.int16)-b["rgb"].astype(np.int16))
+            rgb_drift = float((rgb_delta.max(axis=2) > 8).mean())
+            depth_drift = float((np.abs(a["depth"]-b["depth"]) > .001).mean())
+            pair = f"{left+1}-{right+1}"
+            differences[pair] = {"rgb_fraction_over_8": rgb_drift, "depth_fraction_over_1mm": depth_drift,
+                                 "rgb_mean_absolute_error": float(rgb_delta.mean())}
+            if rgb_drift > .001 or depth_drift > .001:
+                errors.append(f"Unstable fixed pose: {name}, captures {pair}: RGB={rgb_drift}, depth={depth_drift}")
+        rgb, depth = frames[0]["rgb"], frames[0]["depth"]
         audit[name] = {"rgb_sha256":checksum(rgb), "depth_sha256":checksum(depth),
-                       "rgb_std":float(rgb.std()), "depth_range_m":[float(depth.min()),float(depth.max())],
-                       "rgb_repeat_fraction_over_8_levels":rgb_drift,
-                       "depth_repeat_fraction_over_1mm":depth_drift}
+                       "rgb_std":float(rgb.std()), "depth_range_m":details[0]["depth_range_m"],
+                       "rgb_repeat_fraction_over_8_levels":differences["1-2"]["rgb_fraction_over_8"],
+                       "depth_repeat_fraction_over_1mm":differences["1-2"]["depth_fraction_over_1mm"],
+                       "captures":details,"comparisons":differences}
+    save(folder/"readback.json", {"views": audit,"errors": errors,"render_calls": render_flags})
+    if errors:
+        raise RuntimeError("; ".join(errors))
     return audit
 
 
@@ -100,14 +117,24 @@ def run_rank(args, folder, rank):
                 raise RuntimeError("Active EGL context does not match the policy CUDA rank")
             production_capture = self.cameras.capture
             def checked_capture():
+                reads, flags = [], []
+                renderer = self.cameras.renderer
+                original_render = renderer.render
+                def trace_render(*args, **kwargs):
+                    flags.append({"capture":len(reads)+1,"view":["top","side"][(len(flags)//2)%2],
+                                  "depth":bool(renderer._depth_rendering),"segmentation":bool(renderer._segmentation_rendering),
+                                  "scene_before":renderer.scene.flags.tolist()})
+                    image = original_render(*args, **kwargs)
+                    flags[-1]["scene_after"] = renderer.scene.flags.tolist()
+                    return image
                 with warnings.catch_warnings(record=True) as messages:
                     warnings.simplefilter("always")
-                    frames = production_capture()
-                    repeat = production_capture()
-                if messages:
-                    raise RuntimeError(f"Camera capture warning: {messages[0].message}")
-                captures.append(inspect_frames(frames, repeat, self.env))
-                return frames
+                    with patch.object(renderer,"render",trace_render):
+                        for _ in range(3):
+                            reads.append(production_capture())
+                evidence = folder/f"repeat_{len(captures):03d}"
+                captures.append(inspect_frames(reads,self.env,evidence,flags,[str(w.message) for w in messages]))
+                return reads[0]
             self.cameras.capture = checked_capture
 
         def observe(self, output=None):

@@ -54,6 +54,8 @@ def frame_stats(cameras, frames):
         variation = float(rgb.std())
         if variation < 1.0:
             raise ValueError(f"{name}: blank RGB frame (std={variation})")
+        if (rgb.sum(axis=2, dtype=np.uint16) < 9).mean() > .70:
+            raise ValueError(f"{name}: more than 70 percent near-black pixels")
         if depth.shape != shape or not np.issubdtype(depth.dtype, np.floating):
             raise ValueError(f"{name}: unexpected depth shape or dtype")
         if not np.isfinite(depth).all():
@@ -63,6 +65,59 @@ def frame_stats(cameras, frames):
             raise ValueError(f"{name}: depth [{lo}, {hi}] outside valid range")
         stats[name] = {"rgb_std": variation, "depth_min_m": lo, "depth_max_m": hi}
     return stats
+
+
+def drift(first, second):
+    import numpy as np
+    result = {}
+    for a, b in zip(first, second):
+        rgb_delta = np.max(np.abs(a["rgb"].astype(np.int16)-b["rgb"].astype(np.int16)), axis=2)
+        depth_delta = np.abs(a["depth"]-b["depth"])
+        result[a["calibration"]["name"]] = {
+            "rgb_fraction_over_8":float((rgb_delta>8).mean()),
+            "depth_fraction_over_1mm":float((depth_delta>.001).mean())}
+    return result
+
+
+def stable_capture(cameras, capture, record, evidence_dir):
+    """Only deliver a fresh observation after two consecutive physical readbacks agree."""
+    previous = None
+    reads = []
+    comparisons = []
+    def evidence():
+        if record.get("readback_evidence"):
+            return
+        from PIL import Image
+        folder = evidence_dir / f"readback-{os.getpid()}"
+        folder.mkdir(exist_ok=True)
+        for i, frames in enumerate(reads):
+            for frame in frames:
+                cam = frame["calibration"]["name"]
+                Image.fromarray(frame["rgb"]).save(folder/f"read-{i+1}-{cam}.png")
+        (folder/"comparisons.json").write_text(json.dumps(comparisons,indent=2)+"\n")
+        record["readback_evidence"] = str(folder)
+
+    for index in range(3):
+        frames = capture(cameras)
+        reads.append(frames)
+        try:
+            stats = frame_stats(cameras, frames)
+        except ValueError as exc:
+            comparisons.append({"read":index+1,"rejected":str(exc)})
+            record["rejected_raw_reads"] = record.get("rejected_raw_reads",0)+1
+            previous = None
+            continue
+        if previous is not None:
+            changes = drift(previous, frames)
+            comparisons.append({"ending_read":index+1,"drift":changes})
+            if all(v <= .001 for camera in changes.values() for v in camera.values()):
+                if index == 2:
+                    record["three_read_captures"] = record.get("three_read_captures",0)+1
+                    evidence()
+                return frames, stats
+        previous = frames
+    evidence()
+    raise RuntimeError(f"No stable valid pair of raw RGB-D observations in three reads: {comparisons}")
 
 
 def configure_worker(argv, env):
@@ -119,8 +174,7 @@ def configure_worker(argv, env):
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings("error", category=RuntimeWarning, module=r"mujoco\.renderer")
-                frames = original_capture(self)
-            stats = frame_stats(self, frames)
+                frames, stats = stable_capture(self, original_capture, record, path.parent)
         except Exception as exc:
             record["invalid_captures"] += 1
             record["error"] = str(exc)
