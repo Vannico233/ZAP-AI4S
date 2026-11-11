@@ -19,3 +19,12 @@ bash "$TOOLS/with_mapped_egl.sh" "$DIAGNOSTICS/training-bindings" \
 ```
 
 The experiment owns its run lock, checkpoint validation and resume counters. Renderer binding records belong to the new audit directory. Record the launcher revision, the checkpoint and the disposition of any partial-round rollouts with the run when changing the runtime placement.
+
+If the policy worker on physical GPU 3 requires a software camera, export these settings before both commands. The library directory must contain a loader-visible OSMesa runtime compatible with the existing Linux userspace.
+
+```bash
+export ZAP_SOFTWARE_RENDER_GPUS=3
+export LD_LIBRARY_PATH="$PWD/.runtime/osmesa-jammy/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+The worker selects OSMesa before MuJoCo imports. The camera records the active llvmpipe renderer and applies the same RGB and metric-depth checks. Qwen keeps its original CUDA assignment. The smoke report for the software worker includes its actual renderer string and requires SAM to have measured an object from its images. Compare its RGB-D cameras with healthy NVIDIA EGL views from the same scene and pose before resuming training.

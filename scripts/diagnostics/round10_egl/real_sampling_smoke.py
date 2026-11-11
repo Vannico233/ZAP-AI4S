@@ -19,7 +19,7 @@ from tube_agent.curriculum.config import digest, file_digest, load
 from tube_agent.curriculum.learning import Generator, load_model
 from tube_agent.lab.experiment import write_json as save
 from tube_agent.lab.vision import Observer, SamClient, decode_image
-from egl_devices import active_egl_device
+from zap_egl_runtime import active_renderer
 
 
 class SampleLimit(BaseException):
@@ -109,12 +109,13 @@ def run_rank(args, folder, rank):
     loaded = generator.bind("warmup_before_round_10",metrics["adapter_after"])
     segmenter = AuditedSam(args.sam_url)
     captures = []
+    renderer_identity = {}
     class SmokeObserver(Observer):
         def __init__(self, env, sam):
             super().__init__(env,sam)
             self.cameras.renderer._gl_context.make_current()
-            if active_egl_device() != rank or "MUJOCO_EGL_DEVICE_ID" not in os.environ:
-                raise RuntimeError("Active EGL context does not match the policy CUDA rank")
+            renderer_identity.update(self.cameras.zap_renderer_identity)
+            renderer_identity.update(active_renderer(renderer_identity, rank))
             production_capture = self.cameras.capture
             def checked_capture():
                 reads, flags = [], []
@@ -180,10 +181,14 @@ def run_rank(args, folder, rank):
         turns.append({"step":row["step"],"frames":raw_audit,"sam_3d_queries":masks,
                       "qwen_input_sha256":row["model_input_sha256"],"generated_tokens":len(row["response_ids"]),
                       "action":row["action"]["action"],"accepted":row["feedback"]["accepted"]})
+    if renderer_identity["backend"] != "nvidia-egl" and not any(
+            masks for turn in turns for masks in turn["sam_3d_queries"].values()):
+        raise RuntimeError("No measured SAM detections from the software-rendered views")
     return {"passed":True,"rank":rank,"scene":scene_id,"adapter_tensor_sha256":loaded,
             "sam_backend":health["backend"],"sam_requests":sum(segmenter.requests.values()),
-            "real_decisions":len(turns),"egl_index":int(os.environ["MUJOCO_EGL_DEVICE_ID"]),
-            "egl_cuda_ordinal":rank,"origin":"diagnostic","training_eligible":False,"turns":turns}
+            "real_decisions":len(turns),"egl_index":renderer_identity["egl_index"],
+            "egl_cuda_ordinal":renderer_identity["observed_cuda_ordinal"],"renderer":renderer_identity,
+            "origin":"diagnostic","training_eligible":False,"turns":turns}
 
 
 def main():

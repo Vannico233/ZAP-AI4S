@@ -120,22 +120,57 @@ def stable_capture(cameras, capture, record, evidence_dir):
     raise RuntimeError(f"No stable valid pair of raw RGB-D observations in three reads: {comparisons}")
 
 
-def configure_worker(argv, env):
-    target = worker_target(argv, env)
-    if not target:
-        return
-    entry, rank, count = target
-    from egl_devices import active_egl_device, enumerate_devices, rank_map
-    import sys
-    if "mujoco" in sys.modules or "OpenGL.EGL" in sys.modules:
-        raise RuntimeError("MuJoCo/EGL imported before renderer device selection")
-    if env.get("CUDA_DEVICE_ORDER") != "PCI_BUS_ID":
-        raise RuntimeError("CUDA_DEVICE_ORDER must be PCI_BUS_ID")
+def select_renderer(env, rank, count):
+    """Select a backend in this worker only; CUDA visibility stays untouched."""
+    from egl_devices import enumerate_devices, rank_map
+    physical = env["CUDA_VISIBLE_DEVICES"].split(",")[rank]
+    software_mask = env.get("ZAP_SOFTWARE_RENDER_GPUS", "")
+    if software_mask:
+        requested = software_mask.split(",")
+        if len(requested) != len(set(requested)) or not set(requested) <= {"0", "2", "3"}:
+            raise ValueError("ZAP_SOFTWARE_RENDER_GPUS must list distinct policy GPUs from 0,2,3")
+        if physical in requested:
+            backend = env.get("ZAP_SOFTWARE_RENDERER", "osmesa")
+            if backend != "osmesa":
+                raise ValueError(f"Unsupported software backend: {backend}")
+            env.update(MUJOCO_GL="osmesa", PYOPENGL_PLATFORM="osmesa", LIBGL_ALWAYS_SOFTWARE="true",
+                       GALLIUM_DRIVER="llvmpipe", LP_NUM_THREADS=env.get("LP_NUM_THREADS", "4"))
+            env.pop("MUJOCO_EGL_DEVICE_ID", None)
+            return {"backend": backend, "policy_gpu": physical, "egl_index": None}
+
     info = enumerate_devices(expected_cuda_devices=count)
     selected = rank_map(info, require_identity=True)[rank]
     if selected["cuda_ordinal"] != rank:
         raise RuntimeError("EGL device identity and CUDA ordinal disagree")
     env["MUJOCO_EGL_DEVICE_ID"] = str(selected["egl_index"])
+    return dict(selected, backend="nvidia-egl", policy_gpu=physical)
+
+
+def active_renderer(selected, rank):
+    if selected["backend"] == "nvidia-egl":
+        from egl_devices import active_egl_device
+        actual = active_egl_device()
+        if actual != rank:
+            raise RuntimeError(f"Wrong active EGL CUDA ordinal: {actual}, expected {rank}")
+        return {"observed_cuda_ordinal": actual}
+    from OpenGL import GL
+    renderer = (GL.glGetString(GL.GL_RENDERER) or b"").decode("ascii", errors="replace")
+    if "llvmpipe" not in renderer.lower():
+        raise RuntimeError(f"Expected a software llvmpipe context, found {renderer!r}")
+    return {"gl_renderer": renderer, "observed_cuda_ordinal": None}
+
+
+def configure_worker(argv, env):
+    target = worker_target(argv, env)
+    if not target:
+        return
+    entry, rank, count = target
+    import sys
+    if "mujoco" in sys.modules or "OpenGL.platform" in sys.modules:
+        raise RuntimeError("MuJoCo/EGL imported before renderer device selection")
+    if env.get("CUDA_DEVICE_ORDER") != "PCI_BUS_ID":
+        raise RuntimeError("CUDA_DEVICE_ORDER must be PCI_BUS_ID")
+    selected = select_renderer(env, rank, count)
     record = {"entry": entry, "rank": rank, "pid": os.getpid(), "cuda_visible_devices": env["CUDA_VISIBLE_DEVICES"],
               "selected": selected, "verified_contexts": 0, "valid_captures": 0, "invalid_captures": 0}
     path = Path(env["ZAP_EGL_AUDIT_DIR"])/f"egl-binding-{os.getpid()}.json"
@@ -147,8 +182,7 @@ def configure_worker(argv, env):
         temporary.replace(path)
 
     publish()
-    print(json.dumps({"event":"egl_binding_selected","entry":entry,"rank":rank,"egl_index":selected["egl_index"],
-                      "pci":selected["pci"],"uuid":selected["uuid"]}), flush=True)
+    print(json.dumps({"event":"egl_binding_selected","entry":entry,"rank":rank,**selected}), flush=True)
     from tube_agent.lab.vision import Cameras
     original_init, original_capture = Cameras.__init__, Cameras.capture
 
@@ -157,10 +191,9 @@ def configure_worker(argv, env):
         original_init(self, *args, **kwargs)
         try:
             self.renderer._gl_context.make_current()
-            actual = active_egl_device()
-            record["observed_cuda_ordinal"] = actual
-            if actual != rank:
-                raise RuntimeError(f"Wrong active EGL CUDA ordinal: {actual}, expected {rank}")
+            identity = active_renderer(selected, rank)
+            self.zap_renderer_identity = {**selected, **identity}
+            record.update(identity)
             record["verified_contexts"] += 1
         except Exception as exc:
             record["error"] = str(exc)
