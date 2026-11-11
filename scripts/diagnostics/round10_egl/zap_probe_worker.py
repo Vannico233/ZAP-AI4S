@@ -1,6 +1,6 @@
 """Replay the three recorded round-10 prefixes and exercise the original cameras."""
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import ctypes
 import hashlib
 import json
@@ -45,6 +45,42 @@ def active_egl_device():
     return None
 
 
+def frame_quality(data, channel):
+    if channel == "rgb":
+        return {"mean_rgb_level_0_255": float(np.mean(data))}
+    return {"finite_fraction": float(np.isfinite(data).mean()),
+            "nan_fraction": float(np.isnan(data).mean()),
+            "inf_fraction": float(np.isinf(data).mean())}
+
+
+def static_comparison(current, baseline, channel):
+    if channel == "rgb":
+        difference = np.abs(current.astype(np.int16) - baseline.astype(np.int16))
+        # A pixel exceeds the threshold if any one of its three channels does.
+        peak = difference.max(axis=2)
+        means = difference.mean(axis=(0, 1))
+        return {"changed_pixel_fraction": float((peak > 0).mean()),
+                "pixel_fraction_over_8_levels": float((peak > 8).mean()),
+                "pixel_fraction_over_32_levels": float((peak > 32).mean()),
+                **{f"mae_{c}_levels": float(v) for c, v in zip(("r", "g", "b"), means)}}
+    finite, baseline_finite = np.isfinite(current), np.isfinite(baseline)
+    both = finite & baseline_finite
+    metrics = {"finite_mask_disagreement_fraction": float((finite != baseline_finite).mean()),
+               "jointly_finite_fraction": float(both.mean())}
+    if both.any():
+        # Use only co-located, jointly finite pixels for metric differences.
+        difference = np.abs(current[both].astype(np.float64) - baseline[both].astype(np.float64))
+        metrics.update(mae_m=float(difference.mean()),
+                       fraction_over_1mm=float((difference > 0.001).mean()),
+                       fraction_over_1cm=float((difference > 0.01).mean()))
+    return metrics
+
+
+def summaries(series):
+    return {k: {"n": len(values), "min": min(values), "mean": float(np.mean(values)), "max": max(values)}
+            for k, values in series.items()}
+
+
 def run(args):
     rank, mode, out = args.rank, args.mode, args.out
     seed = (10009012, 10009019, 10009026)[rank]
@@ -69,6 +105,8 @@ def run(args):
     first_bad = {}
     depth_range = {}
     egl_devices = []
+    read_quality = defaultdict(lambda: defaultdict(list))
+    static_quality = {}
     options = mujoco.MjvOption()
     options.geomgroup[3] = 1
     atol = config["search"]["replay_atol"]
@@ -97,6 +135,8 @@ def run(args):
             cams.renderer._gl_context.make_current()
             egl_devices.append(active_egl_device())
             static_hashes = {}
+            static_frames, comparisons = {}, defaultdict(lambda: defaultdict(list))
+            paired_counts = Counter()
             for frame in range(32):
                 state["frame"] = frame
                 for camera in cams.names:
@@ -114,6 +154,8 @@ def run(args):
                         counts[key] += 1
                         state["completed_reads"] += 1
                         messages.update(f"{key}: {w.message}" for w in warns)
+                        for metric, v in frame_quality(data, channel).items():
+                            read_quality[key][metric].append(v)
                         if channel == "rgb":
                             valid = data.shape == (480,640,3) and data.dtype == np.uint8 and data.std() >= 1
                         else:
@@ -134,12 +176,22 @@ def run(args):
                             if key in static_hashes and static_hashes[key] != value:
                                 mismatches[key] += 1
                             static_hashes.setdefault(key,value)
+                            if key not in static_frames:
+                                static_frames[key] = data.copy()
+                            elif data.shape == static_frames[key].shape and (channel != "rgb" or data.ndim == 3 and data.shape[-1] == 3):
+                                paired_counts[key] += 1
+                                for metric, v in static_comparison(data, static_frames[key], channel).items():
+                                    comparisons[key][metric].append(v)
                     cams.renderer.disable_depth_rendering()
                 if frame < len(rows):
                     row = rows[frame]
                     feedback = execute(env,observer,policy,row["action"])
                     if feedback != row["feedback"] or not same_state(env.snapshot(),row["state"],atol):
                         raise RuntimeError(f"Recorded replay diverged at step {frame+1}")
+            static_quality[str(repetition)] = {
+                k: {"baseline_quality": frame_quality(b, k.split("/")[-1]), "comparisons": paired_counts[k],
+                    "metrics": summaries(comparisons[k])}
+                for k, b in static_frames.items()}
             event("close_renderer")
         finally:
             if cams:
@@ -149,6 +201,8 @@ def run(args):
               "warnings":messages,"static_hash_mismatches":mismatches,"depth_range_m":depth_range,
               "egl_cuda_device_attribute":egl_devices,"visible_cuda_devices":os.getenv("CUDA_VISIBLE_DEVICES"),
               "mujoco_egl_device_id":os.getenv("MUJOCO_EGL_DEVICE_ID"),"mujoco":mujoco.__version__,
+              "all_read_quality": {k: summaries(series) for k, series in read_quality.items()},
+              "static_quality_by_context": static_quality,
               "verified_replays":2}
     save(out/f"result-{rank}.json",result)
     print(json.dumps(result),flush=True)
