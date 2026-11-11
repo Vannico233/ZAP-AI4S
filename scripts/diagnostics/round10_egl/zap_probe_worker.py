@@ -1,7 +1,6 @@
 """Replay the three recorded round-10 prefixes and exercise the original cameras."""
 import argparse
 from collections import Counter, defaultdict
-import ctypes
 import hashlib
 import json
 import os
@@ -14,6 +13,7 @@ import mujoco
 import numpy as np
 import torch
 
+from egl_devices import active_egl_device
 from tube_agent.curriculum.env import CurriculumEnv
 from tube_agent.curriculum.rollout import read_rows, same_state
 from tube_agent.lab.policy import VisualPolicy, execute
@@ -24,25 +24,6 @@ def save(path, value):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(value, allow_nan=False), encoding="utf8")
     temporary.replace(path)
-
-
-def active_egl_device():
-    # EGL_EXT_device_query / EGL_NV_device_cuda are optional driver extensions.
-    egl = ctypes.CDLL("libEGL.so.1")
-    ptr = ctypes.c_void_p
-    egl.eglGetCurrentDisplay.restype = ptr
-    egl.eglGetProcAddress.argtypes = [ctypes.c_char_p]
-    egl.eglGetProcAddress.restype = ptr
-    display = egl.eglGetCurrentDisplay()
-    addr = egl.eglGetProcAddress(b"eglQueryDisplayAttribEXT")
-    devaddr = egl.eglGetProcAddress(b"eglQueryDeviceAttribEXT")
-    if not (display and addr and devaddr):
-        return None
-    query = ctypes.CFUNCTYPE(ctypes.c_uint, ptr, ctypes.c_int, ctypes.POINTER(ctypes.c_ssize_t))
-    device, ordinal = ctypes.c_ssize_t(), ctypes.c_ssize_t()
-    if query(addr)(display, 0x322C, ctypes.byref(device)) and query(devaddr)(device.value, 0x323A, ctypes.byref(ordinal)):
-        return ordinal.value
-    return None
 
 
 def frame_quality(data, channel):
