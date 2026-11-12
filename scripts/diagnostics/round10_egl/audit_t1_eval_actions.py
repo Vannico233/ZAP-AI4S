@@ -12,7 +12,7 @@ def read(path):
 
 def summarize(root, run, node, eos, cap):
     baseline = read(root / "baselines" / (node + ".json"))
-    totals, kinds, accepted, parser_reasons, rejected_actions, reasons = (Counter() for _ in range(6))
+    totals, accepted, parser_reasons, rejected_actions, reasons = (Counter() for _ in range(5))
     for scene in baseline["results"]:
         path = run / "evaluation" / node / scene["scene_id"] / "result.json"
         assert hashlib.sha256(path.read_bytes()).hexdigest() == scene["result_sha256"]
@@ -30,7 +30,6 @@ def summarize(root, run, node, eos, cap):
                 ends_eos = bool(tokens and tokens[-1] in eos)
                 action = row["action"].get("action")
                 action = action if isinstance(action, str) and len(action) <= 50 else "<missing_or_other>"
-                kinds[action] += 1
                 passed = row["feedback"]["accepted"]
                 parsed = row["response_format"]["mode"] != "invalid"
                 totals["turns"] += 1
@@ -66,7 +65,11 @@ def main():
     root = args.focus_run.resolve()
     parent = Path(read(root/"SOURCE.json")["parent_run"])
     model = Path(read(root/"provenance.json")["model"]["resolved_path"])
-    ids = read(model/"generation_config.json")["eos_token_id"]
+    if (model/"generation_config.json").is_file():
+        ids = read(model/"generation_config.json")["eos_token_id"]
+    else:
+        from transformers import AutoConfig, GenerationConfig
+        ids = GenerationConfig.from_model_config(AutoConfig.from_pretrained(model, local_files_only=True)).eos_token_id
     eos = {ids} if isinstance(ids, int) else set(ids)
     cap = read(root/"config.json")["policy"]["max_new_tokens"]
     assert read(parent/"config.json")["policy"]["max_new_tokens"] == cap
