@@ -122,6 +122,8 @@ def collect(args):
     from .rollout import episode
     config = load(BIMANUAL)
     config["policy"]["temperature"] = args.temperature
+    if args.kinematic_note:
+        config["policy"]["kinematic_note"] = True
     model_path = resolve_model(args.model)
     if (model_path / "adapter_config.json").exists():
         raise ValueError("T1 collection requires the original Qwen checkpoint")
@@ -164,6 +166,8 @@ def main(argv=None):
     p.add_argument("--samples-per-scene", type=int, default=2)
     p.add_argument("--seed", type=int, default=20261113)
     p.add_argument("--temperature", type=float, default=.7)
+    p.add_argument("--kinematic-note", action="store_true",
+                   help="Explain signed table-normal displacement in the prompt for a separate collection.")
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--shards", type=int, default=1)
     p.add_argument("--summarize", action="store_true")

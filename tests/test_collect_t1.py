@@ -9,6 +9,15 @@ from tube_agent.curriculum.config import BIMANUAL, digest, load
 from tube_agent.lab.experiment import write_json
 
 
+def test_kinematic_note_is_a_separate_reset_collection_condition():
+    config = load(BIMANUAL)
+    original_prompt = rollout.system_prompt(config)
+    original_digest = digest(config)
+    config["policy"]["kinematic_note"] = True
+    assert "p + h*u" in rollout.system_prompt(config) and "p + h*u" not in original_prompt
+    assert digest(config) != original_digest
+
+
 def test_shards_cover_distinct_model_seeds_on_training_scenes_only():
     config = load(BIMANUAL)
     attempts = collect_t1.make_plan(config, 6, 2, 20261113)

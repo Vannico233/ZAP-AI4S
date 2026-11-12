@@ -21,6 +21,12 @@ def system_prompt(c):
                       "The left and right arm names refer to the robots, even when their positions "
                       "in the image change. table_up_middle gives the tabletop's upward unit normal "
                       "in the same optical frame as both TCPs.")
+            if c["policy"].get("kinematic_note"):
+                layout += (" Let p be the measured TCP position of the selected arm and u = table_up_middle. "
+                           "To translate vertically upward by h metres, the absolute target is p + h*u, "
+                           "component by component, with the same measured quaternion. "
+                           "For a candidate target t, dot(t - p, u) is the signed upward displacement "
+                           "in metres. A negative value moves toward the table.")
         return interface.SYSTEM + layout + (
             f"\nThe red tube radius is {g['tube_radius']} metres. The square rack hole width is "
             f"{2*g['hole_half_width']} metres. The blue rack is the source, and the yellow rack is the target.")
