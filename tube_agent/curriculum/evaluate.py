@@ -12,19 +12,29 @@ from .rollout import episode
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run", type=Path, required=True); p.add_argument("--model", required=True)
-    p.add_argument("--node", choices=("original", "after_warmup", "after_sft"), required=True)
+    p.add_argument("--node", choices=("original", "source", "after_warmup", "after_sft"), required=True)
     p.add_argument("--shard", type=int, required=True); p.add_argument("--shards", type=int, default=3)
-    a = p.parse_args(); root = a.run.resolve(); c = load(root/"config.json")
+    a = p.parse_args(); root = a.run.resolve(); c = load(root/"config.json", allow_focus=True)
     adapter = None if a.node == "original" else root/"checkpoints"/a.node
+    expected = None
+    if a.node == "source":
+        if c.get("experiment") != "t1_focus_v1":
+            p.error("Source evaluation requires a T1 focus run")
+        source = read_json(root/"SOURCE.json")
+        adapter = Path(source["source_checkpoint"])
+        expected = source["tensor_sha256"]
+    elif a.node == "after_warmup" and c.get("experiment") == "t1_focus_v1":
+        expected = read_json(root/"warmup/metrics/round_02.json")["adapter_after"]
     if adapter:
         complete = read_json(adapter/"COMPLETE.json")
         if file_digest(adapter/"adapter_model.safetensors") != complete["adapter_sha256"]:
             raise ValueError("Frozen model node was modified")
     model, processor = load_model(a.model, c, adapter, trainable=False)
-    generator = Generator(model, processor, c); frozen = generator.bind(a.node)
+    generator = Generator(model, processor, c); frozen = generator.bind(a.node, expected)
     segmenter = SamClient(c["execution"]["sam_url"])
     scenes = [s for s in read_json(root/"scenes.json")["scenes"] if s["split"] == "eval"]
-    if len(scenes) != 120: raise ValueError("Expected 120 fixed evaluation initial states")
+    if len(scenes) != c["seeds"]["eval"] * len(c["tasks"]):
+        raise ValueError("Wrong number of fixed evaluation initial states")
     try:
         segmenter.health()
         for scene in scenes[a.shard::a.shards]:

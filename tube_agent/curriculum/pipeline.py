@@ -83,7 +83,7 @@ class CurriculumRunner(Runner):
         self.step(stage, distributed_command("tube_agent.curriculum.train", stage,
                                             "--run", self.output, "--model", self.a.model))
 
-    def evaluate(self, node):
+    def evaluate(self, node, episodes=120):
         marker = self.output/"steps"/("evaluate_"+node+".json")
         if marker.exists(): return
         processes = []
@@ -92,7 +92,7 @@ class CurriculumRunner(Runner):
                 "tube_agent.curriculum.evaluate", "--run", str(self.output), "--model", self.a.model,
                 "--node", node, "--shard", str(shard), "--shards", "3"], [gpu]))
         self.wait(processes, "evaluate_"+node)
-        write_json(marker, {"complete": True, "episodes": 120})
+        write_json(marker, {"complete": True, "episodes": episodes})
 
 
 def model_reference(path):

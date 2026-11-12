@@ -22,11 +22,12 @@ def file_digest(path):
     return result.hexdigest()
 
 
-def load(path=DEFAULT):
+def load(path=DEFAULT, *, allow_focus=False):
     c = json.loads(Path(path).read_text(encoding="utf-8"))
     g, s, t = c["geometry"], c["success"], c["training"]
-    if c["tasks"] != list(TASKS) or c["action_protocol"] != "zap_pose_v1":
-        raise ValueError("This experiment requires T1-T4 and zap_pose_v1")
+    focus = allow_focus and c.get("experiment") == "t1_focus_v1"
+    if c["tasks"] != (["T1"] if focus else list(TASKS)) or c["action_protocol"] != "zap_pose_v1":
+        raise ValueError("Unexpected task list or action protocol for this experiment")
     if not g["tube_radius"] < g["hole_half_width"] < g["rack_outer_half_width"]:
         raise ValueError("Tube must physically fit a nonzero rack hole")
     if abs(s["target_depth_m"] - (g["target_rim_z"] - g["floor_z"])) > 1e-9:
@@ -34,10 +35,12 @@ def load(path=DEFAULT):
     fixed = {"base_rounds": 12, "hard_rounds": 6, "groups_per_task": 2, "group_size": 8,
              "lora_rank": 32, "lora_alpha": 64, "warmup_epochs_per_batch": 1,
              "warmup_minibatch": 32, "sft_epochs": 2, "sft_batch": 16}
+    if focus:
+        fixed.update(base_rounds=2, hard_rounds=0, groups_per_task=4)
     if any(t[k] != v for k, v in fixed.items()):
         raise ValueError("Sampling and training budgets differ from the registered experiment")
-    if t["turn_negative_advantage"] or t["failed_done_credit_clamp"]:
-        raise ValueError("Only episode-level invalid penalties are allowed in this experiment")
+    if t["turn_negative_advantage"] or t["failed_done_credit_clamp"] is not focus:
+        raise ValueError("Unexpected action credit settings for this experiment")
     if c["seeds"]["train"] != 32 or c["seeds"]["eval"] != 30:
         raise ValueError("Expected 32 training and 30 evaluation scenes per task")
     if c["search"]["max_continuations"] != 128 or c["search"]["continuations_per_expansion"] != 4:

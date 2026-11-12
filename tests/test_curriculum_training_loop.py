@@ -125,3 +125,59 @@ def test_interrupted_batch_resumes_old_policy_without_duplicate_successes(monkey
     trainer.main()
     assert len(calls) == 960
     assert read_json(tmp_path/"warmup/DONE.json")["optimizer_steps"] == 30
+
+
+def test_t1_warm_start_clamps_only_failed_done_and_resumes(monkeypatch, tmp_path):
+    from tube_agent.curriculum.t1_focus import focus_plan
+    root = tmp_path/"focus"
+    trainer, loads, calls = setup_runtime(monkeypatch, root)
+    parent = load()
+    config, scenes, rounds = focus_plan(parent, scene_manifest(parent))
+    source = tmp_path/"parent/warmup/checkpoints/step_00015"
+    source.mkdir(parents=True)
+    model = TinyPolicy()
+    with torch.no_grad():
+        model.lora_weight.fill_(0.6)
+    model.save_pretrained(source)
+    write_json(source/"COMPLETE.json", {"config_sha256": digest(parent),
+               "adapter_sha256": file_digest(source/"adapter_model.safetensors")})
+    for name, value in (("config.json", config), ("scenes.json", scenes), ("schedule.json", rounds),
+                        ("SOURCE.json", {"source_checkpoint": str(source), "parent_config_sha256": digest(parent),
+                                         "tensor_sha256": trainer.adapter_digest(model)})):
+        write_json(root/name, value)
+    original = trainer.episode
+
+    def focus_episode(scene, config, directory, generator, segmenter, policy_seed, version, **kwargs):
+        result = original(scene, config, directory, generator, segmenter, policy_seed, version, **kwargs)
+        path = directory/"trajectory.jsonl"
+        row = json.loads(path.read_text())
+        row.update(step=1, feedback={"accepted": True}, judge_after={"success": False}, action={"action": "move_to"})
+        final_row = {**row, "action": {"action": "done"}, "step": 2}
+        path.write_text(json.dumps(row)+"\n"+json.dumps(final_row)+"\n")
+        result.update(task="T1", split="train", policy="model", policy_seed=policy_seed, origin="warmup",
+            demonstration=None, search_prefix_length=0, replayed_actions=0, config_sha256=digest(config),
+            generated_actions=2, steps=2)
+        write_json(directory/"result.json", result)
+        return result
+
+    def interrupt(*args, **kwargs):
+        if len(calls) == 35:
+            raise RuntimeError("test interruption")
+        return focus_episode(*args, **kwargs)
+
+    monkeypatch.setattr(trainer, "episode", interrupt)
+    monkeypatch.setattr(sys, "argv", ["train", "warmup", "--run", str(root), "--model", "original-checkpoint"])
+    with pytest.raises(RuntimeError, match="test interruption"):
+        trainer.main()
+    assert loads[0][0] == source and torch.equal(loads[0][1], model.lora_weight)
+    assert read_json(root/"warmup/training_config.json")["optimizer_restored_from"] is None
+    monkeypatch.setattr(trainer, "episode", focus_episode)
+    trainer.main()
+    assert loads[-1][0] == root/"warmup/checkpoints/step_00001"
+    assert len(calls) == 64
+    done = read_json(root/"warmup/DONE.json")
+    assert (done["rounds"], done["episodes"], done["optimizer_steps"]) == (2, 64, 2)
+    for index in (1, 2):
+        metric = read_json(root/"warmup/metrics"/f"round_{index:02d}.json")
+        assert metric["failed_done_credit"] == {"failed_accepted_done": 32, "positive_before": 16, "positive_after": 0}
+        assert all(g["failed_done_credit"]["positive_before"] == 4 for g in metric["groups"])
