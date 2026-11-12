@@ -1,5 +1,6 @@
 """Collect fixed-budget original-model T1 rollouts and verify successes by physical replay."""
 import argparse
+import hashlib
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from tube_agent.model_utils import DEFAULT_MODEL, resolve_model
 from .config import BIMANUAL, digest, file_digest, load, scene_manifest
 
 ORIGIN = "t1_collection"
+EMPTY_ADAPTER = hashlib.sha256(b"").hexdigest()
 
 
 @contextmanager
@@ -59,35 +61,63 @@ def freeze_plan(root, config, args, model_path, sam_health):
     return plan
 
 
-def verify_result(directory, attempt, config):
+def row_evidence(row, scene, seed, config, step, origin):
+    return (row["step"] == step and row["task"] == "T1" and row["scene_id"] == scene["id"]
+            and row["policy_version"] == "original" and row["source_origin"] == origin
+            and row["policy_seed"] == seed and row["action_protocol"] == config["action_protocol"]
+            and row["middle_camera_sha256"] == digest(config["observation"]["middle_camera"])
+            and bool(row["response_ids"]) and len(row["model_input_sha256"]) == 64)
+
+
+def check_original_policy(result, config):
+    from .rollout import system_prompt
+    generator = result["generator_provenance"]
+    if (result["prompt_sha256"] != digest(system_prompt(config)) or generator["adapter_sha256"] != EMPTY_ADAPTER
+            or generator["model_class"] != "Qwen3_5ForConditionalGeneration"
+            or generator["policy_version"] != "original" or generator["sampler"] != "same_live_model_object"):
+        raise ValueError("Unexpected base policy or camera-frame prompt")
+
+
+def verify_result(directory, attempt, config, *, origin=ORIGIN, prefix=()):
     from .rollout import read_rows, replay
     result = read_json(directory / "result.json")
     if result["error"]:
         raise RuntimeError(f"Incomplete model attempt {directory.name}: {result['error']}")
     scene, seed = attempt["scene"], attempt["policy_seed"]
     if (result["scene"] != scene or result["policy_seed"] != seed or result["policy"] != "model"
-            or result["origin"] != ORIGIN or result["policy_version"] != "original"
-            or result["demonstration"] is not None or result["replayed_actions"] != 0
+            or result["origin"] != origin or result["policy_version"] != "original"
+            or result["demonstration"] is not None or result["replayed_actions"] != len(prefix)
             or result["config_sha256"] != digest(config) or not result["steps"]
-            or result["generated_actions"] != result["steps"]):
+            or not 0 < result["generated_actions"] == result["steps"] - len(prefix)):
         raise ValueError("Collection result has incompatible model, scene, actions or configuration")
     record = {"trajectory": attempt["directory"] + "/trajectory.jsonl", "scene_id": scene["id"],
               "policy_seed": seed, "model_success": result["success"], "steps": result["steps"],
               "reward": result["reward"], "failure_type": result["failure_type"],
               "termination": result["termination"], "invalid_actions": result["invalid_actions"],
               "replay_verified": False}
-    if result["success"]:
+    if prefix or result["success"]:
         rows = list(read_rows(directory))
-        if (len(rows) != result["steps"] or not rows[-1]["judge_after"]["success"]
-                or any(row["source_origin"] != ORIGIN or row["policy_seed"] != seed
-                       or not row.get("response_ids") or not row.get("model_input_sha256") for row in rows)):
+        if (len(rows) != result["steps"] or rows[-1]["judge_after"]["success"] != result["success"]
+                or rows[:len(prefix)] != list(prefix)
+                or any(row["source_origin"] != origin or row["policy_seed"] != seed
+                       or not row.get("response_ids") or not row.get("model_input_sha256") for row in rows[len(prefix):])):
             raise ValueError("Success candidate lacks complete model-generated action evidence")
+        if prefix:
+            check_original_policy(result, config)
+            if any(not row_evidence(r, scene, seed, config, i, origin)
+                   for i, r in enumerate(rows[len(prefix):], len(prefix) + 1)):
+                raise ValueError("Incompatible native continuation actions")
+    if result["success"]:
         final = replay(scene, config, rows)
         if not (final["success"] and final["held"] and not final["dropped"] and not final["severe_collision"]):
             raise ValueError("Success candidate failed the T1 physical replay")
         record.update(replay_verified=True, trajectory_sha256=file_digest(directory / "trajectory.jsonl"),
                       result_sha256=file_digest(directory / "result.json"),
                       goal_stable_seconds=final["goal_stable_seconds"])
+        if prefix:
+            record["action_sequence_sha256"] = digest([scene["sha256"], [r["action"] for r in rows]])
+    if prefix:
+        record.update(parent=attempt["parent"], replayed_actions=len(prefix), generated_actions=result["generated_actions"])
     return record
 
 
@@ -103,9 +133,18 @@ def summarize(root):
             if error:
                 errors.append({"directory": attempt["directory"], "error": error})
     successes = [r for r in records if r["replay_verified"]]
-    return {"planned": len(plan["attempts"]), "completed": len(records), "verified_successes": len(successes),
+    report = {"planned": len(plan["attempts"]), "completed": len(records), "verified_successes": len(successes),
             "failures": dict(Counter(r["failure_type"] for r in records if not r["model_success"])),
             "errors": errors, "successes": successes, "records": records, "config_sha256": plan["config_sha256"]}
+    if "parent_collection_sha256" in plan:
+        unique = {r["action_sequence_sha256"]: r for r in successes}
+        report.update(parent_collection_sha256=plan["parent_collection_sha256"],
+                      verified_successful_continuations=len(successes), distinct_success_trajectories=len(unique),
+                      distinct_successful_scenes=len({r["scene_id"] for r in successes}),
+                      unique_successes=list(unique.values()),
+                      replayed_actions=sum(r["replayed_actions"] for r in records),
+                      generated_actions=sum(r["generated_actions"] for r in records))
+    return report
 
 
 def update_summary(root):
@@ -116,10 +155,34 @@ def update_summary(root):
           f"{report['verified_successes']} | infrastructure errors {len(report['errors'])}", flush=True)
 
 
-def collect(args):
-    from tube_agent.lab.vision import SamClient
+def collect_shard(args, root, plan, config, model_path, segmenter, *, origin=ORIGIN, prefix_reader=None):
     from .learning import Generator, load_model
     from .rollout import episode
+    generator = None
+    with lock(root / f".shard_{args.shard}.lock", wait=False):
+        for attempt in plan["attempts"][args.shard::args.shards]:
+            directory = root / attempt["directory"]
+            if (directory / "verified.json").is_file():
+                continue
+            result_path = directory / "result.json"
+            if directory.exists() and (not result_path.exists() or read_json(result_path)["error"]):
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                directory.rename(directory.with_name(directory.name + ".incomplete-" + stamp))
+            prefix = prefix_reader(attempt) if prefix_reader else []
+            if not result_path.exists():
+                if generator is None:
+                    model, processor = load_model(model_path, config, trainable=False)
+                    generator = Generator(model, processor, config)
+                    generator.bind("original", EMPTY_ADAPTER)
+                episode(attempt["scene"], config, directory, generator, segmenter, attempt["policy_seed"],
+                        "original", prefix=prefix, origin=origin, temperature=config["policy"]["temperature"])
+            record = verify_result(directory, attempt, config, origin=origin, prefix=prefix)
+            write_json(directory / "verified.json", record)
+            update_summary(root)
+
+
+def collect(args):
+    from tube_agent.lab.vision import SamClient
     config = load(BIMANUAL)
     config["policy"]["temperature"] = args.temperature
     if args.kinematic_note:
@@ -132,25 +195,7 @@ def collect(args):
     segmenter = SamClient(args.sam_url or config["execution"]["sam_url"])
     try:
         plan = freeze_plan(root, config, args, model_path, segmenter.health())
-        generator = None
-        with lock(root / f".shard_{args.shard}.lock", wait=False):
-            for attempt in plan["attempts"][args.shard::args.shards]:
-                directory = root / attempt["directory"]
-                if (directory / "verified.json").is_file():
-                    continue
-                result_path = directory / "result.json"
-                if directory.exists() and (not result_path.exists() or read_json(result_path)["error"]):
-                    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-                    directory.rename(directory.with_name(directory.name + ".incomplete-" + stamp))
-                if not result_path.exists():
-                    if generator is None:
-                        model, processor = load_model(model_path, config, trainable=False)
-                        generator = Generator(model, processor, config)
-                        generator.bind("original")
-                    episode(attempt["scene"], config, directory, generator, segmenter, attempt["policy_seed"],
-                            "original", origin=ORIGIN, temperature=args.temperature)
-                write_json(directory / "verified.json", verify_result(directory, attempt, config))
-                update_summary(root)
+        collect_shard(args, root, plan, config, model_path, segmenter)
     finally:
         segmenter.close()
         if (root / "collection.json").is_file():

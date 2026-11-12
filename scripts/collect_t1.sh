@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One bounded collection on the shared four-H100 notebook.
-# Usage: bash scripts/collect_t1.sh MODEL_DIRECTORY OUTPUT_DIRECTORY [collector options]
+# Usage: bash scripts/collect_t1.sh MODEL_DIRECTORY OUTPUT_DIRECTORY [--parent PRIOR_BATCH] [options]
 set -euo pipefail
 if (( $# < 2 )); then
     echo "Usage: bash scripts/collect_t1.sh MODEL_DIRECTORY OUTPUT_DIRECTORY [collector options]" >&2
@@ -9,6 +9,29 @@ fi
 model=$(realpath "$1")
 out=$(realpath -m "$2")
 shift 2
+module=tube_agent.curriculum.collect_t1
+options=()
+while (( $# )); do
+    case "$1" in
+        --parent|--parent=*)
+            if [[ "$1" == "--parent" ]]; then
+                (( $# >= 2 )) || { echo "Missing --parent directory" >&2; exit 2; }
+                shift
+                parent=$(realpath "$1")
+            else
+                parent=$(realpath "${1#--parent=}")
+            fi
+            if [[ "$out/" == "$parent/"* || "$parent/" == "$out/"* ]]; then
+                echo "The parent and continuation outputs require separate directories." >&2
+                exit 2
+            fi
+            module=tube_agent.curriculum.continue_t1
+            options+=(--parent "$parent")
+            ;;
+        *) options+=("$1") ;;
+    esac
+    shift
+done
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export ZAP_PROJECT_ROOT="$PWD" PYTHONUNBUFFERED=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=4 LP_NUM_THREADS=4
@@ -59,13 +82,13 @@ PY
 gpus=(0 2 3)
 for shard in 0 1 2; do
     CUDA_VISIBLE_DEVICES="${gpus[$shard]}" bash scripts/diagnostics/round10_egl/with_mapped_egl.sh \
-        "$logs/render_audit" "$python" -u -m tube_agent.curriculum.collect_t1 \
-        --output "$out" --model "$model" --sam-url "$url" --shards 3 --shard "$shard" "$@" \
+        "$logs/render_audit" "$python" -u -m "$module" \
+        --output "$out" --model "$model" --sam-url "$url" --shards 3 --shard "$shard" "${options[@]}" \
         > "$logs/shard_$shard.log" 2>&1 &
     workers+=("$!")
 done
 result=0
 for pid in "${workers[@]}"; do wait "$pid" || result=1; done
 workers=()
-"$python" -m tube_agent.curriculum.collect_t1 --output "$out" --summarize
+"$python" -m "$module" --output "$out" --summarize
 exit "$result"

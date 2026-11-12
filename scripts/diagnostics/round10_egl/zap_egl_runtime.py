@@ -22,7 +22,7 @@ def worker_target(argv, env):
         return None
 
     if entry in {"tube_agent.curriculum.evaluate", "tube_agent.curriculum.preflight",
-                 "tube_agent.curriculum.collect_t1"}:
+                 "tube_agent.curriculum.collect_t1", "tube_agent.curriculum.continue_t1"}:
         if env.get("CUDA_VISIBLE_DEVICES") not in {"0", "2", "3"}:
             raise RuntimeError("Expected a single visible policy GPU for this curriculum worker")
         return entry, 0, 1
