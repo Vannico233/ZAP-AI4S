@@ -61,7 +61,8 @@ def inspect(pair, cap, collect_example):
             if (row["policy_seed"],row["scene_id"],row["source_origin"]) != (
                     r["policy_seed"],r["scene"]["id"],"warmup"):
                 raise ValueError(f"Row provenance mismatch: {path}")
-            act = row["action"]["action"]
+            raw_action = row["action"].get("action")
+            act = raw_action if isinstance(raw_action, str) else "missing_or_nonstring_action"
             last_action = act
             parsed = row["response_format"]
             accepted = row["feedback"]["accepted"]
