@@ -18,7 +18,7 @@ from tube_agent.lab.experiment import read_json, write_json
 from tube_agent.lab.train import token_logps
 from tube_agent.lab.vision import SamClient
 
-from .config import digest, file_digest, load
+from .config import digest, file_digest, load, validate_adapter_checkpoint
 from .learning import Generator, adapter_digest, audit_parameters, load_model, training_inputs
 from .rollout import episode, read_rows
 
@@ -51,12 +51,8 @@ class TrainingSession:
         random.seed(self.seed + rank)
         np.random.seed(self.seed + rank)
         if adapter:
-            metadata = read_json(adapter / "COMPLETE.json")
             expected_config = self.source["parent_config_sha256"] if focus and not self.resume else digest(self.config)
-            if metadata["config_sha256"] != expected_config or (
-                file_digest(adapter / "adapter_model.safetensors") != metadata["adapter_sha256"]
-            ):
-                raise ValueError("Adapter checkpoint/config checksum mismatch")
+            validate_adapter_checkpoint(adapter, expected_config)
         self.model, self.processor = load_model(model_path, self.config, adapter, self.device)
         self.parameters = [value for value in self.model.parameters() if value.requires_grad]
         if world > 1:

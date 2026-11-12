@@ -13,7 +13,7 @@ from pathlib import Path
 import random
 import sys
 
-from .curriculum.config import TASKS, digest, file_digest, load
+from .curriculum.config import TASKS, digest, file_digest, load, validate_adapter_checkpoint
 from .lab.credit import failed_done
 from .lab.experiment import read_json, write_json
 
@@ -620,7 +620,9 @@ def run_search(root, model_path):
         if world > 1:
             dist.destroy_process_group()
         return
-    model, processor = load_model(model_path, c, root / "checkpoints/after_warmup", f"cuda:{local}", False)
+    adapter = root / "checkpoints/after_warmup"
+    validate_adapter_checkpoint(adapter, config_sha)
+    model, processor = load_model(model_path, c, adapter, f"cuda:{local}", False)
     generator = Generator(model, processor, c)
     frozen = generator.bind("after_warmup")
     segmenter = SamClient(c["execution"]["sam_url"])

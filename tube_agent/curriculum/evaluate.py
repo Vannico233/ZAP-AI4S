@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tube_agent.lab.experiment import read_json, write_json
 from tube_agent.lab.vision import SamClient
-from .config import load, file_digest, digest
+from .config import load, digest, validate_adapter_checkpoint
 from .learning import load_model, Generator
 from .rollout import episode
 
@@ -16,19 +16,19 @@ def main():
     p.add_argument("--shard", type=int, required=True); p.add_argument("--shards", type=int, default=3)
     a = p.parse_args(); root = a.run.resolve(); c = load(root/"config.json", allow_focus=True)
     adapter = None if a.node == "original" else root/"checkpoints"/a.node
+    adapter_config_sha = digest(c)
     expected = None
     if a.node == "source":
         if c.get("experiment") != "t1_focus_v1":
             p.error("Source evaluation requires a T1 focus run")
         source = read_json(root/"SOURCE.json")
         adapter = Path(source["source_checkpoint"])
+        adapter_config_sha = source["parent_config_sha256"]
         expected = source["tensor_sha256"]
     elif a.node == "after_warmup" and c.get("experiment") == "t1_focus_v1":
         expected = read_json(root/"warmup/metrics/round_02.json")["adapter_after"]
     if adapter:
-        complete = read_json(adapter/"COMPLETE.json")
-        if file_digest(adapter/"adapter_model.safetensors") != complete["adapter_sha256"]:
-            raise ValueError("Frozen model node was modified")
+        validate_adapter_checkpoint(adapter, adapter_config_sha)
     model, processor = load_model(a.model, c, adapter, trainable=False)
     generator = Generator(model, processor, c); frozen = generator.bind(a.node, expected)
     segmenter = SamClient(c["execution"]["sam_url"])

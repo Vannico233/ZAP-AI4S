@@ -30,7 +30,7 @@ def _camera(parent, name, pos, target, image_right, fovy):
 
 
 class BimanualEnv(CurriculumEnv):
-    VERSION = "bimanual_panda_middle_camera_v1"
+    VERSION = "bimanual_panda_middle_camera_v2"
     ACTION_PROTOCOL = "bimanual_camera_v1"
     ARM_PREFIXES = {"left": "", "right": "right_"}
     RENDER_CAMERA = "middle"
@@ -40,6 +40,10 @@ class BimanualEnv(CurriculumEnv):
         config = load(BIMANUAL) if config is None else config
         if config["action_protocol"] != self.ACTION_PROTOCOL:
             raise ValueError("BimanualEnv requires the bimanual camera action protocol")
+        if config["version"] == "tube_curriculum_bimanual_v1":
+            self.VERSION = "bimanual_panda_middle_camera_v1"
+        elif config["version"] != "tube_curriculum_bimanual_v2":
+            raise ValueError(f"Unknown bimanual environment: {config['version']}")
         self.grasp_arm = "left"
         self.touching = set()
         super().__init__(scene, config, frame_callback)
@@ -60,7 +64,13 @@ class BimanualEnv(CurriculumEnv):
             section = root.find(tag)
             for item in list(section):
                 section.append(_right_copy(item))
-        _camera(world, "middle", (1.20, 0, .92), (.32, 0, .32), (0, 1, 0), 66)
+        if self.spec["version"] == "tube_curriculum_bimanual_v1":
+            # Frozen v1 episodes expressed their absolute TCP goals in this across-table frame.
+            _camera(world, "middle", (1.20, 0, .92), (.32, 0, .32), (0, 1, 0), 66)
+        else:
+            cam = self.spec["observation"]["middle_camera"]
+            _camera(world, "middle", cam["position_world_m"], cam["look_at_world_m"],
+                    cam["image_right_world"], cam["fovy_deg"])
         for name, base, prefix in (("left", left, ""), ("right", right, "right_")):
             hand = base.find(f".//body[@name='{prefix}hand']")
             side = 1 if name == "left" else -1

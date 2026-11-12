@@ -3,15 +3,32 @@
 ## Two Panda arms and three RGB-D cameras
 
 The current upright-tube environment has two independently controlled Panda arms.
-The fixed `middle` camera faces the workbench. `left_wrist` and `right_wrist`
-move with their hands. The policy observes the three images in that order.
+The fixed `middle` camera is 0.90 m above the midpoint of the two bases. It
+looks forward toward the nominal rack midpoint, 0.05 m above the table and
+0.45 m forward of the bases. This pitches the lens about 28° forward from
+vertical. An 82° vertical field of view keeps both parked grippers in frame.
+The aim stays fixed when individual scene seeds move the racks.
+`left_wrist` and `right_wrist` move with their
+hands. The policy observes the three 640×480 RGB-D views in that order.
 Both TCP poses, motion targets and mask-derived 3D points use the **same
 middle-camera optical frame**. Its origin is the camera center. X points right,
 Y down and Z forward. Positions are in metres. The scalar-first unit quaternion
 `[w, x, y, z]` maps the TCP's local axes into this frame. The TCP origin is the
 midpoint between the finger pads. Each motor action names one arm.
+In the middle image, moving along the table away from the bases projects
+upward. At reset, the arm named `left` appears on image-right. Names follow
+the physical controllers and their attached wrist cameras.
 
-![MuJoCo views at reset and as the right hand approaches the tube](docs/bimanual-cameras.jpg)
+For a vertical displacement of `h` metres, add `h * table_up_middle` (as a
+vector) to the measured TCP position. Both arms report poses in the same
+frame. The default calibrated upward unit vector is approximately
+`[0, -0.468, -0.884]`; its live value is available from
+`interface.proprioception(env)["table_up_middle"]`.
+
+![Three MuJoCo views at reset, during a right-arm lift, and above the insertion target](docs/bimanual-cameras.jpg)
+
+In the bottom row, the left hand obscures most of the tube in the middle
+camera, while its wrist camera shows the tube end and the yellow rack opening.
 
 ### Work with the environment
 
@@ -44,13 +61,22 @@ adds SAM mask measurements for policy rollouts.
 To render a scene and check its physical feasibility with scripted actions:
 
 ```sh
-python -m tube_agent.curriculum.preflight --scene T1_train_000 --render --output runs/checks/bimanual_t1
+python -m tube_agent.curriculum.preflight --scene T1_train_000 --render --output runs/checks/bimanual_v2_t1
 ```
 
 This command saves three PNGs and a diagnostic JSON. Diagnostic trajectories
 are marked `training_eligible: false`. The current tasks are lift (T1), carry
 a preheld tube (T2), insert and release a preheld tube (T3), and transfer from
 the source rack through insertion and withdrawal (T4).
+
+On the existing Inspire CPU notebook, run these lines in the checkout before
+using the rendering command above:
+
+```sh
+source .venv-linux/bin/activate
+export MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa LIBGL_ALWAYS_SOFTWARE=true
+export LD_LIBRARY_PATH="$PWD/.runtime/osmesa-jammy/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
 
 ### Debug post-training
 
@@ -69,7 +95,10 @@ python -m tube_agent.posttrain plan
 The bimanual config inherits the original task geometry and reward settings and
 records a new action and observation version. The launcher freezes the resolved
 config in each run. Historical single-arm checkpoints and evaluations retain
-their original action coordinates and input views. See the
+their original action coordinates and input views. A frozen bimanual v1 run
+uses its original camera across the table. New bimanual trajectory rows record
+the middle-camera calibration hash so prefix replay can verify the frame before
+executing a saved action. See the
 [bimanual config](configs/tube_curriculum_bimanual.json) and the
 [single-arm curriculum](docs/tube-curriculum-v1.md).
 

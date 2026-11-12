@@ -15,7 +15,13 @@ from .config import digest
 def system_prompt(c):
     g = c["geometry"]
     if c["action_protocol"] == interface.PROTOCOL:
-        return interface.SYSTEM + (
+        layout = ""
+        if "middle_camera" in c["observation"]:
+            layout = ("\nThe middle camera is mounted above the arm bases, looking down toward the racks. "
+                      "The left and right arm names refer to the robots, even when their positions "
+                      "in the image change. table_up_middle gives the tabletop's upward unit normal "
+                      "in the same optical frame as both TCPs.")
+        return interface.SYSTEM + layout + (
             f"\nThe red tube radius is {g['tube_radius']} metres. The square rack hole width is "
             f"{2*g['hole_half_width']} metres. The blue rack is the source, and the yellow rack is the target.")
     return SYSTEM.split("Known apparatus dimensions:")[0] + (
@@ -54,6 +60,18 @@ def read_rows(directory):
                 yield json.loads(line)
 
 
+def _mount_hash(config):
+    mount = config["observation"].get("middle_camera")
+    return digest(mount) if mount is not None else None
+
+
+def _check_action_frame(row, protocol, mount_hash):
+    if row.get("action_protocol", "zap_pose_v1") != protocol:
+        raise ValueError("Saved action protocol differs from this environment")
+    if row.get("middle_camera_sha256") != mount_hash:
+        raise ValueError("Saved action uses a different middle camera mount")
+
+
 def episode(scene, config, directory, generator, segmenter, policy_seed, policy_version,
             temperature=None, prefix=None, origin="warmup", save_frames=False):
     directory = Path(directory)
@@ -62,6 +80,7 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
                           policy_seed, config["action_protocol"])
     policy.system = system_prompt(config)
     policy.version = config["observation"]["version"]
+    mount_hash = _mount_hash(config)
     env = observer = None
     feedback = None
     count = 0
@@ -78,8 +97,7 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
             "physical_setup_actions": env.initialization_actions, "training_eligible": False})
         with (directory/"trajectory.jsonl").open("w", encoding="utf-8") as stream:
             for saved in prefix or []:
-                if saved.get("action_protocol", "zap_pose_v1") != config["action_protocol"]:
-                    raise ValueError("Prefix action protocol differs from this environment")
+                _check_action_frame(saved, config["action_protocol"], mount_hash)
                 feedback = execute(env, observer, policy, saved["action"])
                 if (feedback != saved["feedback"] or
                         not same_state(env.snapshot(), saved["state_after"], config["search"]["replay_atol"])):
@@ -101,6 +119,8 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
                        "perception": observer.last_audit, "response_format": policy.last_parse,
                        "source_origin": origin, "policy_seed": policy_seed,
                        "camera_calibration": observation["cameras"], "action_protocol": config["action_protocol"]}
+                if mount_hash is not None:
+                    row["middle_camera_sha256"] = mount_hash
                 speeds = env.arm_speeds() if config["action_protocol"] == interface.PROTOCOL else env.data.qvel[:7]
                 row["node_eligible"] = (action.get("action") in ("move_to", "set_gripper") and
                     feedback.get("accepted") is True and
@@ -149,10 +169,10 @@ def replay(scene, config, rows):
         queries = []
     observer = ObserverStub()
     policy = VisualPolicy(None, action_protocol=config["action_protocol"])
+    mount_hash = _mount_hash(config)
     try:
         for row in rows:
-            if row.get("action_protocol", "zap_pose_v1") != config["action_protocol"]:
-                raise ValueError("Replay action protocol differs from this environment")
+            _check_action_frame(row, config["action_protocol"], mount_hash)
             feedback = execute(env, observer, policy, row["action"])
             if feedback != row["feedback"] or not same_state(env.snapshot(), row["state_after"], config["search"]["replay_atol"]):
                 raise RuntimeError("Saved successful episode does not physically replay")

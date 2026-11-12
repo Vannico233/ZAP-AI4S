@@ -158,7 +158,7 @@ def execute(runner, config):
 def main(argv=None):
     from tube_agent.posttrain import add_training_arguments, configure_training
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output", type=Path, default=Path("runs/tube_curriculum/bimanual_v1"))
+    p.add_argument("--output", type=Path, default=Path("runs/tube_curriculum/bimanual_v2"))
     p.add_argument("--config", type=Path, default=BIMANUAL); p.add_argument("--model", default=DEFAULT_MODEL)
     p.add_argument("--sam-url"); p.add_argument("--plan", action="store_true")
     add_training_arguments(p)

@@ -19,7 +19,7 @@ set -eo pipefail
 
 PROJECT_ROOT="$ZAP_PROJECT_ROOT"
 MODEL_DIR="/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model"
-RUN_DIR="${TUBE_RUN_DIR:-runs/tube_curriculum/bimanual_v1}"
+RUN_DIR="${TUBE_RUN_DIR:-runs/tube_curriculum/bimanual_v2}"
 cd "$PROJECT_ROOT"
 
 {

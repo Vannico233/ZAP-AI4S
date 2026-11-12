@@ -120,10 +120,15 @@ def ee_pose(env, arm):
 
 
 def proprioception(env):
-    return {"coordinate_frame": FRAME, "units": "metres; unit quaternion wxyz",
-            "view_order": list(CAMERA_NAMES), "steps_left": env.max_steps - env.steps,
-            "arms": {arm: {"ee_pose": ee_pose(env, arm),
-                           "gripper_opening_m": float(env.gripper_opening_m(arm))} for arm in ARMS}}
+    state = {"coordinate_frame": FRAME, "units": "metres; unit quaternion wxyz",
+             "view_order": list(CAMERA_NAMES), "steps_left": env.max_steps - env.steps,
+             "arms": {arm: {"ee_pose": ee_pose(env, arm),
+                            "gripper_opening_m": float(env.gripper_opening_m(arm))} for arm in ARMS}}
+    if "middle_camera" in env.spec["observation"]:
+        # The calibrated table normal is world +Z, expressed in optical axes.
+        _, world_from_middle = _world_from_optical(env, "middle")
+        state["table_up_middle"] = world_from_middle[2].tolist()
+    return state
 
 
 def move_to(env, arm, position, quaternion_wxyz):

@@ -9,6 +9,9 @@ from .config import BIMANUAL, load, scene_manifest, digest
 def check(config, manifest, output, render=False, segmenter=None, all_views=False):
     from tube_agent.interface import make_env, make_observer
     from tube_agent.lab.vision import Cameras
+    if (("config_sha256" in manifest and manifest["config_sha256"] != digest(config))
+            or ("version" in manifest and manifest["version"] != config["version"])):
+        raise ValueError("Scene manifest belongs to a different environment or calibration")
     if config["action_protocol"] == "bimanual_camera_v1":
         from .bimanual import diagnostic_commands
     else:

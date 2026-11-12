@@ -40,6 +40,71 @@ def test_pose_position_and_orientation_are_in_middle_optical(rig):
     np.testing.assert_allclose(basis[:,1], [0., -1., 0.], atol=1e-12)
 
 
+def test_base_mounted_middle_camera_projects_forward_up_and_measures_vertical_lifts():
+    env = interface.open_scene("T1_train_000")
+    try:
+        camera = env.model.camera("middle")
+        origin = env.data.cam_xpos[camera.id]
+        midpoint = (env.data.body("link0").xpos + env.data.body("right_link0").xpos) / 2
+        np.testing.assert_allclose(origin, midpoint + [0., 0., .90], atol=1e-7)
+        assert env.model.cam_bodyid[camera.id] == 0  # Fixed to the world, not a wrist.
+
+        # Sightline is fixed to the nominal rack midpoint, independent of scene jitter.
+        target = np.array([.45, -.01, .05])
+        sightline = (target - origin) / np.linalg.norm(target - origin)
+        right = np.cross(sightline, [0., 0., 1.])
+        right /= np.linalg.norm(right)
+        down = np.cross(sightline, right)
+        world_from_optical = np.column_stack((right, down, sightline))
+
+        def optical_position(xyz):
+            return np.asarray(interface.world_pose_to_middle(env, xyz, np.eye(3))["position"])
+
+        center = optical_position(target)
+        np.testing.assert_allclose(center[:2], [0., 0.], atol=1e-7)
+        assert center[2] > 0
+        assert optical_position(target + [0., -.05, 0.])[0] > .049
+        assert optical_position(target + [.05, 0., 0.])[1] < -.04
+        lift = optical_position(target + [0., 0., .05]) - center
+        np.testing.assert_allclose(lift, .05 * world_from_optical[2], atol=1e-7)
+        assert lift[1] < 0 and lift[2] < 0
+        sensed = interface.proprioception(env)
+        np.testing.assert_allclose(sensed["table_up_middle"], lift / .05, atol=1e-7)
+
+        for name, arm in env.arms.items():
+            pose = sensed["arms"][name]["ee_pose"]
+            local_rotation = np.empty(9)
+            mujoco.mju_quat2Mat(local_rotation, np.array(pose["quaternion_wxyz"]))
+            np.testing.assert_allclose(world_from_optical @ pose["position"] + origin,
+                                       env.data.site_xpos[arm.site], atol=1e-7)
+            np.testing.assert_allclose(world_from_optical @ local_rotation.reshape(3, 3),
+                                       env.data.site_xmat[arm.site].reshape(3, 3), atol=1e-7)
+    finally:
+        env.close()
+
+
+def test_frozen_v1_scene_keeps_the_original_across_table_view():
+    from tube_agent.curriculum.config import BIMANUAL, load, scene_manifest
+    config = load(BIMANUAL)
+    config["version"] = "tube_curriculum_bimanual_v1"
+    config["observation"]["version"] = "bimanual_rgbd_v1"
+    config["observation"].pop("middle_camera")
+    env = interface.make_env(scene_manifest(config)["scenes"][0], config)
+    try:
+        camera = env.model.camera("middle")
+        origin = np.array([1.20, 0., .92])
+        target = np.array([.32, 0., .32])
+        direction = (target - origin) / np.linalg.norm(target - origin)
+        np.testing.assert_allclose(env.data.cam_xpos[camera.id], origin)
+        axes = env.data.cam_xmat[camera.id].reshape(3, 3)
+        np.testing.assert_allclose(axes[:, 0], [0., 1., 0.], atol=1e-7)
+        np.testing.assert_allclose(-axes[:, 2], direction, atol=1e-7)
+        assert env.model.cam_fovy[camera.id] == 66
+        assert env.result()["environment_version"] == "bimanual_panda_middle_camera_v1"
+    finally:
+        env.close()
+
+
 def test_wrist_pixel_uses_live_extrinsics(rig):
     mask = np.zeros((3,3), dtype=bool)
     mask[2,2] = True
@@ -98,3 +163,14 @@ def test_bimanual_rollout_and_replay_use_the_public_camera_frame(tmp_path):
         assert camera["coordinate_frame"] == "middle_optical" and "T_middle_from_view" in camera
         assert "rotation_camera_to_world" not in camera
     assert replay(scene, config, rows)["reward"] == result["reward"]
+    # A done-only replay produces identical physics even from the wrong view.
+    # The mount check must also catch missing markers in older bimanual rows.
+    old_row = rows[0].copy()
+    del old_row["middle_camera_sha256"]
+    with pytest.raises(ValueError, match="different middle camera mount"):
+        replay(scene, config, [old_row])
+    wrong_row = {**rows[0], "middle_camera_sha256": "other-mount"}
+    mismatch = episode(scene, config, tmp_path/"wrong_mount", generate,
+                       SimpleNamespace(segment=lambda rgb, queries: []),
+                       4, "interface_test", prefix=[wrong_row], origin="interface_test")
+    assert "different middle camera mount" in mismatch["error"]

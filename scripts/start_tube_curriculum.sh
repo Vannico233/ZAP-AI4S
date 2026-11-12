@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-OUTPUT="${1:-runs/tube_curriculum/bimanual_v1}"
+OUTPUT="${1:-runs/tube_curriculum/bimanual_v2}"
 if [[ $# -gt 0 ]]; then shift; fi
 PY="$ROOT/.venv-linux/bin/python"
 if [[ ! -x "$PY" ]]; then echo "Missing existing .venv-linux/bin/python" >&2; exit 1; fi

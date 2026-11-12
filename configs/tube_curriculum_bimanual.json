@@ -1,6 +1,6 @@
 {
   "extends": "tube_curriculum_v1.json",
-  "version": "tube_curriculum_bimanual_v1",
+  "version": "tube_curriculum_bimanual_v2",
   "action_protocol": "bimanual_camera_v1",
   "interface": {
     "coordinate_frame": "middle_optical",
@@ -12,7 +12,13 @@
     "command_opening": "fraction in [0,1]"
   },
   "observation": {
-    "version": "bimanual_rgbd_v1",
-    "cameras": ["middle", "left_wrist", "right_wrist"]
+    "version": "bimanual_rgbd_v2",
+    "cameras": ["middle", "left_wrist", "right_wrist"],
+    "middle_camera": {
+      "position_world_m": [0, 0, 0.90],
+      "look_at_world_m": [0.45, -0.01, 0.05],
+      "image_right_world": [-0.01, -0.45, 0],
+      "fovy_deg": 82
+    }
   }
 }
