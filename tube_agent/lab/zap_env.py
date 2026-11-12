@@ -36,29 +36,30 @@ class ZapLabEnv(LabEnv):
     def instruction(self):
         return super().instruction.replace("0.35 seconds", "0.5 seconds").replace("0.4 seconds", "0.5 seconds")
 
-    def _pose_motion(self, xyz, target):
+    def _pose_motion(self, xyz, target, arm=None):
         """Validate a complete straight TCP path before any dynamics advance."""
-        start = self.tcp.copy()
-        current = self.data.site_xmat[self.tcp_id].reshape(3, 3).copy()
+        arm = self.arms["left"] if arm is None else arm
+        start = self.data.site_xpos[arm.site].copy()
+        current = self.data.site_xmat[arm.site].reshape(3, 3).copy()
         quat = np.empty(4); velocity = np.empty(3)
         mujoco.mju_mat2Quat(quat, (target@current.T).ravel())
         if quat[0] < 0: quat *= -1
         mujoco.mju_quat2Vel(velocity, quat, 1.)
         angle = float(np.linalg.norm(velocity))
         count = max(1, math.ceil(np.linalg.norm(xyz-start)/.008), math.ceil(angle/.07))
-        path = []; previous = self.data.qpos[:7].copy()
+        path = []; previous = self.data.qpos[arm.qpos].copy()
         for i in range(1, count+1):
             fraction = i/count
             rotation = (zap_pose.axis_rotation(velocity/angle, angle*fraction)@current
                         if angle > 1e-9 else current)
             position = start+fraction*(xyz-start)
-            q = self._solve_ik(position, rotation, previous)
+            q = self._solve_ik(position, rotation, previous, arm)
             if q is None:
                 # Different IK seeds may help; do not execute an unvalidated jump.
                 for j1 in (-.8, 0., .8):
                     for j7 in (-1.8, 0., 1.8):
                         initial = HOME.copy(); initial[0] = j1; initial[6] = j7
-                        candidate = self._solve_ik(position, rotation, initial)
+                        candidate = self._solve_ik(position, rotation, initial, arm)
                         if candidate is not None and np.max(np.abs(candidate-previous)) < .6:
                             q = candidate; break
                     if q is not None: break
@@ -68,14 +69,14 @@ class ZapLabEnv(LabEnv):
                         "failed_waypoint": i, "waypoints": count}
             path.append(q.copy()); previous = q
         for q in path:
-            previous = self.data.ctrl[:7].copy()
+            previous = self.data.ctrl[arm.servos].copy()
             substeps = max(1, math.ceil(np.max(np.abs(q-previous))/.12))
             for j in range(1, substeps+1):
-                self.data.ctrl[:7] = previous+(q-previous)*j/substeps
+                self.data.ctrl[arm.servos] = previous+(q-previous)*j/substeps
                 self._advance(.08)
         self._advance(.3)
-        error = float(np.linalg.norm(self.tcp-xyz))
-        angular = float(np.arccos(np.clip((np.trace(target@self.data.site_xmat[self.tcp_id].reshape(3,3).T)-1)/2,-1,1)))
+        error = float(np.linalg.norm(self.data.site_xpos[arm.site]-xyz))
+        angular = float(np.arccos(np.clip((np.trace(target@self.data.site_xmat[arm.site].reshape(3,3).T)-1)/2,-1,1)))
         reached = error < .008 and angular < .08
         return {"accepted": True, "reached": reached, "outcome": "reached" if reached else "short",
                 "position_error_m": round(error, 6), "orientation_error_deg": round(math.degrees(angular), 4),

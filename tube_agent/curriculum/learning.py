@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import torch
+from tube_agent.posttrain import group_advantages
 from tube_agent.serve import build_inputs
 from tube_agent.lab.train import load as load_existing, sample_inputs as existing_inputs
 
@@ -86,23 +87,3 @@ class Generator:
             generated = self.model.generate(**inputs.to(self.model.device), **options)
         self.last_response_ids = generated[0, length:].tolist()
         return self.processor.decode(generated[0, length:], skip_special_tokens=True)
-
-
-def group_advantages(results):
-    """Only center within a task+scene group; no noise or per-turn overrides."""
-    import numpy as np
-    if len(results) != 8 or len({(r["scene"]["task"], r["scene"]["sha256"]) for r in results}) != 1:
-        raise ValueError("A GRPO group must contain 8 trajectories from the identical task/scene")
-    if len({r["policy_version"] for r in results}) != 1 or any(r.get("error") for r in results):
-        raise ValueError("Mixed policy versions or infrastructure errors in GRPO group")
-    rewards = np.asarray([r["reward"] for r in results], dtype=float)
-    if not np.isfinite(rewards).all(): raise ValueError("Nonfinite rewards")
-    values = rewards-rewards.mean()
-    same = bool(np.all(rewards == rewards[0]))
-    return values.tolist(), {"rewards": rewards.tolist(), "mean": float(rewards.mean()),
-        "std": float(rewards.std()), "all_rewards_equal": same,
-        "zero_advantage": bool(np.all(np.abs(values) < 1e-12)),
-        "behavior_signatures": [r.get("action_signature") for r in results],
-        "reward_terms": [r["reward_terms"] for r in results],
-        "zero_group_diagnosis": ("identical_action_sequences" if len({r.get("action_signature") for r in results}) == 1
-                                  else "different_actions_same_reward_inspect_terms") if same else "nonzero"}

@@ -1,11 +1,25 @@
 #!/usr/bin/env sh
-# Paste this script into the GPU job entrypoint, or run it with sh.
+# Run with sh, or paste into a job whose cwd or ZAP_PROJECT_ROOT is the checkout.
+set -eu
+if [ -n "${ZAP_PROJECT_ROOT:-}" ]; then
+    checkout=$ZAP_PROJECT_ROOT
+elif [ "${0##*/}" = submit_tube_curriculum.sh ] && [ -f "$0" ]; then
+    checkout=$(dirname "$0")/..
+else
+    checkout=$PWD
+fi
+cd "$checkout"
+if [ ! -f configs/tube_curriculum_bimanual.json ] || [ ! -f scripts/start_tube_curriculum.sh ]; then
+    echo "Expected the bimanual checkout at $PWD. Set ZAP_PROJECT_ROOT to its directory." >&2
+    exit 1
+fi
+export ZAP_PROJECT_ROOT="$(pwd -P)"
 exec /usr/bin/env bash -c '
 set -eo pipefail
 
-PROJECT_ROOT="/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/ZAP-AI4S-git"
+PROJECT_ROOT="$ZAP_PROJECT_ROOT"
 MODEL_DIR="/inspire/hdd/project/robot-action/cengzhaoyu-25130105/wangningchong/DiG/assets/model"
-RUN_DIR="${TUBE_RUN_DIR:-runs/tube_curriculum/v1}"
+RUN_DIR="${TUBE_RUN_DIR:-runs/tube_curriculum/bimanual_v1}"
 cd "$PROJECT_ROOT"
 
 {

@@ -1,0 +1,18 @@
+{
+  "extends": "tube_curriculum_v1.json",
+  "version": "tube_curriculum_bimanual_v1",
+  "action_protocol": "bimanual_camera_v1",
+  "interface": {
+    "coordinate_frame": "middle_optical",
+    "axes": ["right", "down", "forward"],
+    "position_units": "metres",
+    "orientation": "unit quaternion wxyz, TCP axes expressed in middle_optical",
+    "tcp": "midpoint between fingertip pads",
+    "arms": ["left", "right"],
+    "command_opening": "fraction in [0,1]"
+  },
+  "observation": {
+    "version": "bimanual_rgbd_v1",
+    "cameras": ["middle", "left_wrist", "right_wrist"]
+  }
+}

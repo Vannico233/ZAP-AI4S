@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import sys
 import torch
 import pytest
-from tube_agent.curriculum.config import load, scene_manifest, schedule, file_digest, digest
+from tube_agent.curriculum.config import BIMANUAL, DEFAULT, load, scene_manifest, schedule, file_digest, digest
 from tube_agent.lab.experiment import write_json, read_json
 
 
@@ -21,9 +21,11 @@ class Processor:
         write_json(Path(path)/"processor_config.json", {"test_only": True})
 
 
-def setup_runtime(monkeypatch, tmp_path):
+def setup_runtime(monkeypatch, tmp_path, config_path=DEFAULT, training=None):
     import tube_agent.curriculum.train as trainer
-    c = load(); manifest = scene_manifest(c)
+    c = load(config_path)
+    c["training"].update(training or {})
+    manifest = scene_manifest(c)
     for name, value in (("config.json", c), ("scenes.json", manifest), ("schedule.json", schedule(c, manifest)),
                         ("provenance.json", {"model": {"resolved_path": "original-checkpoint"}})):
         write_json(tmp_path/name, value)
@@ -65,6 +67,7 @@ def setup_runtime(monkeypatch, tmp_path):
         row = {"response_ids": [label], "action": {"action": "done"}, "model_input_sha256": "toy"}
         (directory/"trajectory.jsonl").write_text(json.dumps(row)+"\n")
         result = {"scene": scene, "policy_version": version, "generator_provenance": generator.provenance.copy(),
+                  "policy_seed": policy_seed, "config_sha256": digest(config),
                   "reward": float(label), "reward_terms": {"progress": float(label)}, "success": False, "error": None}
         write_json(directory/"result.json", result)
         return result
@@ -72,18 +75,23 @@ def setup_runtime(monkeypatch, tmp_path):
     return trainer, loads, calls
 
 
-def test_real_loop_has_960_rollouts_18_batches_30_optimizer_steps_then_two_sft_epochs(monkeypatch, tmp_path):
-    trainer, loads, calls = setup_runtime(monkeypatch, tmp_path)
+@pytest.mark.parametrize(("config_path", "training", "warmup_steps", "epochs", "sft_steps"), [
+    (DEFAULT, {}, 30, 2, 4),
+    (BIMANUAL, {"warmup_minibatch": 24, "sft_batch": 8, "sft_epochs": 3}, 48, 3, 9),
+])
+def test_real_loop_uses_frozen_settings(monkeypatch, tmp_path, config_path, training, warmup_steps, epochs, sft_steps):
+    trainer, loads, calls = setup_runtime(monkeypatch, tmp_path, config_path, training)
     monkeypatch.setattr(sys, "argv", ["train", "warmup", "--run", str(tmp_path), "--model", "original-checkpoint"])
     trainer.main()
     assert len(calls) == 960
     done = read_json(tmp_path/"warmup/DONE.json")
-    assert done["round"] == 18 and done["optimizer_steps"] == 30
+    assert done["round"] == 18 and done["optimizer_steps"] == warmup_steps
     assert len({h for _, _, h in calls}) == 18  # Next batch really uses updated weights.
     assert len(list((tmp_path/"warmup/checkpoints").glob("*/COMPLETE.json"))) == 18
     # A completed resume must not draw more rollouts or perform more updates.
     trainer.main(); assert len(calls) == 960
     warmup = tmp_path/"checkpoints/after_warmup"
+    assert read_json(warmup/"node.json")["observation_version"] == load(config_path)["observation"]["version"]
     before = torch.load(warmup/"adapter_model.safetensors", weights_only=True)["lora_weight"]
     path = tmp_path/"toy_success"; path.mkdir()
     rows = [{"response_ids": [1], "model_input_sha256": "toy"} for _ in range(17)]
@@ -103,9 +111,9 @@ def test_real_loop_has_960_rollouts_18_batches_30_optimizer_steps_then_two_sft_e
     trainer.main()
     assert loads[-1][0] == warmup and torch.equal(loads[-1][1], before)
     sft = read_json(tmp_path/"sft/DONE.json")
-    assert sft["epochs"] == 2 and sft["optimizer_steps"] == 4 and sft["sft_batches"] == 4
+    assert sft["epochs"] == epochs and sft["optimizer_steps"] == sft_steps and sft["sft_batches"] == sft_steps
     final = tmp_path/"checkpoints/after_sft"
-    assert read_json(final/"COMPLETE.json")["epoch_completed"] == 2
+    assert read_json(final/"COMPLETE.json")["epoch_completed"] == epochs
     after = torch.load(final/"adapter_model.safetensors", weights_only=True)["lora_weight"]
     assert not torch.equal(after, before)
     assert torch.equal(torch.load(warmup/"adapter_model.safetensors", weights_only=True)["lora_weight"], before)
@@ -122,6 +130,12 @@ def test_interrupted_batch_resumes_old_policy_without_duplicate_successes(monkey
     with pytest.raises(RuntimeError, match="injected"): trainer.main()
     assert len(list((tmp_path/"warmup/checkpoints").glob("*/COMPLETE.json"))) == 1
     monkeypatch.setattr(trainer, "episode", original)
+    cached = next((tmp_path/"warmup/rollouts/round_02").glob("*/try_00/result.json"))
+    saved = read_json(cached)
+    write_json(cached, {**saved, "config_sha256": "different-environment"})
+    with pytest.raises(ValueError, match="different policy, environment, scene or seed"):
+        trainer.main()
+    write_json(cached, saved)
     trainer.main()
     assert len(calls) == 960
     assert read_json(tmp_path/"warmup/DONE.json")["optimizer_steps"] == 30

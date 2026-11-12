@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 import numpy as np
 from PIL import Image, ImageDraw
+from tube_agent import interface
 
 PERCEPTION_VERSION = "sam_query_retry_v1"
 # Bounded, image-description retries; these contain no poses or simulator IDs.
@@ -38,8 +39,14 @@ def decode_mask(value):
     return bits[:np.prod(shape)].reshape(shape).astype(bool)
 
 class Cameras:
-    def __init__(self, env, names=("top","side"), width=640, height=480):
+    def __init__(self, env, names=None, width=None, height=None):
         import mujoco
+        self.middle_frame = getattr(env, "ACTION_PROTOCOL", None) == interface.PROTOCOL
+        spec = getattr(env, "spec", {}).get("observation", {})
+        if names is None:
+            names = interface.CAMERA_NAMES if self.middle_frame else ("top", "side")
+        width = spec.get("width", 640) if width is None else width
+        height = spec.get("height", 480) if height is None else height
         self.env,self.names,self.width,self.height=env,tuple(names),width,height
         self.renderer=mujoco.Renderer(env.model,height=height,width=width)
 
@@ -57,10 +64,15 @@ class Cameras:
             self.renderer.disable_depth_rendering()
             focal=.5*self.height/np.tan(np.deg2rad(float(cam.fovy[0]))/2)
             calibration={"name":name,"width":self.width,"height":self.height,
-                         "fx":float(focal),"fy":float(focal),"cx":(self.width-1)/2,"cy":(self.height-1)/2,
-                         "position":self.env.data.cam_xpos[cid].tolist(),
-                         "rotation_camera_to_world":self.env.data.cam_xmat[cid].reshape(3,3).tolist(),
-                         "convention":"OpenGL: x right, y up, optical direction -z; metric axial depth"}
+                         "fx":float(focal),"fy":float(focal),"cx":(self.width-1)/2,"cy":(self.height-1)/2}
+            if self.middle_frame:
+                calibration.update(coordinate_frame=interface.FRAME,
+                                   T_middle_from_view=interface.view_extrinsics(self.env, name).tolist(),
+                                   convention="Optical: x right, y down, z forward; metric axial depth")
+            else:
+                calibration.update(position=self.env.data.cam_xpos[cid].tolist(),
+                                   rotation_camera_to_world=self.env.data.cam_xmat[cid].reshape(3,3).tolist(),
+                                   convention="OpenGL: x right, y up, optical direction -z; metric axial depth")
             frames.append({"rgb":rgb,"depth":depth,"calibration":calibration})
         return frames
 
@@ -71,9 +83,12 @@ def unproject(depth, mask, calibration):
     v,u=np.nonzero(valid)
     if not len(v): return np.empty((0,3))
     d=depth[v,u]
-    camera=np.column_stack(((u-calibration["cx"])*d/calibration["fx"],
-                            -(v-calibration["cy"])*d/calibration["fy"],-d))
-    return camera@np.asarray(calibration["rotation_camera_to_world"]).T+calibration["position"]
+    optical=np.column_stack(((u-calibration["cx"])*d/calibration["fx"],
+                             (v-calibration["cy"])*d/calibration["fy"],d))
+    if "T_middle_from_view" in calibration:
+        transform = np.asarray(calibration["T_middle_from_view"])
+        return optical @ transform[:3,:3].T + transform[:3,3]
+    return (optical @ interface.GL_FROM_OPTICAL) @ np.asarray(calibration["rotation_camera_to_world"]).T + calibration["position"]
 
 def measure(points):
     points=np.asarray(points)
@@ -127,6 +142,9 @@ def detect_views(frames, segmenter, queries):
             measurement = measure(unproject(frame["depth"], mask, frame["calibration"]))
             if measurement is None:
                 continue
+            if frame["calibration"].get("coordinate_frame") == interface.FRAME:
+                measurement["coordinate_frame"] = interface.FRAME
+                measurement["visible_depth_extent_m"] = measurement.pop("visible_height")
             detections[view].append({**detection, "query": canonical_names[query],
                                     "segmentation_query": query, "measurement": measurement})
             counts[query] += 1

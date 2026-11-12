@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from tube_agent.lab.experiment import read_json, write_json
 from tube_agent.lab.pipeline import Runner, gpu_check, source_digest
 from tube_agent.model_utils import DEFAULT_MODEL, resolve_model
-from .config import DEFAULT, ROOT, TASKS, load, digest, file_digest, scene_manifest, schedule, plan
+from .config import BIMANUAL, ROOT, TASKS, load, digest, file_digest, scene_manifest, schedule, plan
 
 
 def distributed_command(module, *arguments):
@@ -151,30 +151,35 @@ def execute(runner, config):
     write_json(out/"vision_scenes.json", visual_manifest)
     runner.step("vision", [sys.executable, "-m", "tube_agent.curriculum.preflight", "--config", str(out/"config.json"),
         "--manifest", str(out/"vision_scenes.json"), "--output", str(out/"vision"), "--render", "--sam-url", a.sam_url], [a.policy_gpus[0]])
-    runner.train_stage("smoke")
-    runner.evaluate("original")
-    runner.train_stage("warmup")
-    runner.step("search", distributed_command("tube_agent.curriculum.search", "--run", out, "--model", a.model))
-    runner.step("freeze_data", [sys.executable, "-m", "tube_agent.curriculum.data", "--run", str(out)], [a.policy_gpus[0]])
-    available = read_json(out/"data/manifest.json")["samples"] > 0
-    if available: runner.train_stage("sft")
-    else: write_json(out/"checkpoints/after_sft_UNAVAILABLE.json", {"reason": "No complete successful trajectories; SFT cannot run on an empty dataset"})
-    runner.evaluate("after_warmup")
-    if available: runner.evaluate("after_sft")
-    result = report(out, available)
-    runner.status(result["status"], report=str(out/"report.json"), main_rl_executed=False)
+    from tube_agent.posttrain import run_posttraining
+    run_posttraining(runner)
 
 
-def main():
+def main(argv=None):
+    from tube_agent.posttrain import add_training_arguments, configure_training
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output", type=Path, default=Path("runs/tube_curriculum/v1"))
-    p.add_argument("--config", type=Path, default=DEFAULT); p.add_argument("--model", default=DEFAULT_MODEL)
+    p.add_argument("--output", type=Path, default=Path("runs/tube_curriculum/bimanual_v1"))
+    p.add_argument("--config", type=Path, default=BIMANUAL); p.add_argument("--model", default=DEFAULT_MODEL)
     p.add_argument("--sam-url"); p.add_argument("--plan", action="store_true")
-    a = p.parse_args(); c = load(a.config)
+    add_training_arguments(p)
+    a = p.parse_args(argv); c = load(a.config)
+    configure_training(c, a)
     if a.sam_url: c["execution"]["sam_url"] = a.sam_url
     if a.plan:
         print(json.dumps(plan(c), indent=2)); return
     if sys.platform != "linux": p.error("Launch this experiment on the existing Linux GPU instance; --plan works locally")
+    # The shared H100 runtime validates RGB-D readbacks in each sampling worker.
+    # Reuse its launcher for both the shell entry and the Python debugger entry.
+    if (c["action_protocol"] == "bimanual_camera_v1" and not os.environ.get("ZAP_EGL_AUDIT_DIR")
+            and (ROOT/".runtime/egl-jammy/EGL_RUNTIME.json").is_file()):
+        env = os.environ.copy()
+        env["ZAP_PROJECT_ROOT"] = str(ROOT)
+        if (ROOT/".runtime/osmesa-jammy/lib/libOSMesa.so.8").is_file():
+            env.setdefault("ZAP_SOFTWARE_RENDER_GPUS", "2,3")
+        wrapper = ROOT/"scripts/diagnostics/round10_egl/with_mapped_egl.sh"
+        args = sys.argv[1:] if argv is None else argv
+        os.execvpe("bash", ["bash", str(wrapper), str(a.output.resolve()/"render_audit"),
+                            sys.executable, "-m", "tube_agent.curriculum.pipeline", *args], env)
     import fcntl
     a.output = a.output.resolve(); a.model = str(resolve_model(a.model))
     a.policy_gpus = c["execution"]["policy_gpus"]; a.sam_gpu = c["execution"]["sam_gpu"]
@@ -205,7 +210,7 @@ def main():
             processor.save_pretrained(original)
             write_json(original/"node.json", {"name": "original", "base_model": provenance["model"],
                 "adapter": None, "config_sha256": digest(c), "action_protocol": c["action_protocol"],
-                "observation_version": "upright_visual_v1", "inference_config": c["policy"], "evaluation": c["evaluation"]})
+                "observation_version": c["observation"]["version"], "inference_config": c["policy"], "evaluation": c["evaluation"]})
         if (a.output/"report.json").exists() and read_json(a.output/"report.json")["status"] in ("completed", "completed_partial"):
             runner.status(read_json(a.output/"report.json")["status"], report=str(a.output/"report.json")); return
         execute(runner, c)

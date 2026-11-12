@@ -24,7 +24,22 @@ def down_rotation(yaw):
     return np.array([[c, s, 0], [s, -c, 0], [0, 0, -1.]])
 
 
+class PandaArm:
+    """MuJoCo indexes for a Panda instance, resolved independently of free-body order."""
+    def __init__(self, model, prefix):
+        self.site = model.site(prefix + "tcp").id
+        self.joints = [model.joint(prefix + f"joint{i}").id for i in range(1, 8)]
+        self.qpos = model.jnt_qposadr[self.joints]
+        self.dofs = model.jnt_dofadr[self.joints]
+        self.servos = [model.actuator(prefix + f"actuator{i}").id for i in range(1, 8)]
+        self.gripper = model.actuator(prefix + "actuator8").id
+        self.fingers = [model.joint(prefix + f"finger_joint{i}").qposadr[0] for i in (1, 2)]
+        self.pads = {model.body(prefix + name).id for name in ("left_finger", "right_finger")}
+
+
 class TubeEnv:
+    ARM_PREFIXES = {"left": ""}
+    RENDER_CAMERA = "overview"
     def __init__(self, task="transport", split="train", seed=0, max_steps=20,
                  frame_callback: Optional[Callable] = None, detailed_feedback=False):
         if task not in ("pick", "transport") or split not in SPLIT_OFFSETS:
@@ -53,10 +68,13 @@ class TubeEnv:
         self.finger_ids = {self.model.body(n).id for n in ("left_finger", "right_finger")}
         self.tube_joint = self.model.joint("tube_red_free").id
         self.tube_dof = self.model.jnt_dofadr[self.tube_joint]
-        self.data.qpos[:7] = HOME
-        self.data.qpos[7:9] = .04
-        self.data.ctrl[:7] = HOME
-        self.data.ctrl[7] = 255
+        self.arms = {name: PandaArm(self.model, prefix) for name, prefix in self.ARM_PREFIXES.items()}
+        self.arm_dofs = np.concatenate([arm.dofs for arm in self.arms.values()])
+        for arm in self.arms.values():
+            self.data.qpos[arm.qpos] = HOME
+            self.data.qpos[arm.fingers] = .04
+            self.data.ctrl[arm.servos] = HOME
+            self.data.ctrl[arm.gripper] = 255
         mujoco.mj_forward(self.model, self.data)
         self._advance(.4)
         self.initial_z = float(self.data.xpos[self.tube_id, 2])
@@ -180,7 +198,7 @@ class TubeEnv:
     def _advance(self, seconds):
         for _ in range(round(seconds / self.model.opt.timestep)):
             # Panda joint servos with standard gravity / bias compensation.
-            self.data.qfrc_applied[:7] = self.data.qfrc_bias[:7]
+            self.data.qfrc_applied[self.arm_dofs] = self.data.qfrc_bias[self.arm_dofs]
             mujoco.mj_step(self.model, self.data)
             if not np.all(np.isfinite(self.data.qpos)):
                 raise RuntimeError("Non-finite simulation state")
@@ -190,29 +208,30 @@ class TubeEnv:
             if self._tick % 40 == 0:
                 self._capture()
 
-    def _solve_ik(self, xyz, rotation, initial=None):
+    def _solve_ik(self, xyz, rotation, initial=None, arm=None):
+        arm = self.arms["left"] if arm is None else arm
         d, m = self.ik_data, self.model
         d.qpos[:] = self.data.qpos
         if initial is not None:
-            d.qpos[:7] = initial
+            d.qpos[arm.qpos] = initial
         jp, jr = np.zeros((3, m.nv)), np.zeros((3, m.nv))
         for _ in range(100):
             mujoco.mj_forward(m, d)
-            position_error = xyz - d.site_xpos[self.tcp_id]
-            delta = rotation @ d.site_xmat[self.tcp_id].reshape(3, 3).T
+            position_error = xyz - d.site_xpos[arm.site]
+            delta = rotation @ d.site_xmat[arm.site].reshape(3, 3).T
             quat, angular_error = np.empty(4), np.empty(3)
             mujoco.mju_mat2Quat(quat, delta.ravel())
             if quat[0] < 0:
                 quat *= -1
             mujoco.mju_quat2Vel(angular_error, quat, 1.)
             if np.linalg.norm(position_error) < .0006 and np.linalg.norm(angular_error) < .008:
-                return d.qpos[:7].copy()
-            mujoco.mj_jacSite(m, d, jp, jr, self.tcp_id)
-            jac = np.vstack([jp[:, :7], jr[:, :7]])
+                return d.qpos[arm.qpos].copy()
+            mujoco.mj_jacSite(m, d, jp, jr, arm.site)
+            jac = np.vstack([jp[:, arm.dofs], jr[:, arm.dofs]])
             error = np.r_[position_error, angular_error]
             step = jac.T @ np.linalg.solve(jac @ jac.T + np.eye(6)*1e-4, error)
             step *= min(1., .15 / max(np.max(np.abs(step)), 1e-9))
-            d.qpos[:7] = np.clip(d.qpos[:7] + step, m.jnt_range[:7, 0]+.005, m.jnt_range[:7, 1]-.005)
+            d.qpos[arm.qpos] = np.clip(d.qpos[arm.qpos] + step, m.jnt_range[arm.joints, 0]+.005, m.jnt_range[arm.joints, 1]-.005)
         return None
 
     def _move(self, xyz, yaw):
@@ -327,7 +346,7 @@ class TubeEnv:
             self.renderer = mujoco.Renderer(self.model, height=480, width=640)
         options = mujoco.MjvOption()
         options.geomgroup[3] = 1  # Menagerie collision meshes are also our visuals.
-        self.renderer.update_scene(self.data, camera="overview", scene_option=options)
+        self.renderer.update_scene(self.data, camera=self.RENDER_CAMERA, scene_option=options)
         return self.renderer.render().copy()
 
     def close(self):

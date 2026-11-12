@@ -4,6 +4,8 @@ import json
 import re
 import httpx
 from .vision import image_url
+from tube_agent import interface
+from tube_agent.interface import execute_action as execute
 
 POLICY_VERSION = "visual_action_evidence_v3"
 
@@ -103,7 +105,9 @@ class HttpGenerator:
 class VisualPolicy:
     def __init__(self,generator,temperature=.8,seed=0,action_protocol="rpy_rounding_v2"):
         self.generator,self.temperature,self.seed=generator,temperature,seed
-        if action_protocol=="zap_pose_v1":
+        if action_protocol == interface.PROTOCOL:
+            self.system, self.version = interface.SYSTEM, interface.PROTOCOL
+        elif action_protocol=="zap_pose_v1":
             from .zap_policy import SYSTEM as prompt, POLICY_VERSION as version
             self.system,self.version=prompt,version
         else:self.system,self.version=SYSTEM,POLICY_VERSION
@@ -115,12 +119,15 @@ class VisualPolicy:
     def act(self,instruction,observation,images,feedback,step):
         if self.initial_visual_reference is None:
             self.initial_visual_reference=copy.deepcopy(observation.get("detections",[]))
-        # Object measurements are already in world coordinates. Full camera
-        # matrices stay in trajectory audits, not mixed into the decision text.
+        # Extrinsics are already applied to each view's measured object points.
         policy_observation={k:v for k,v in observation.items() if k!="cameras"}
-        opening=observation.get("gripper_opening",0.08)
-        fingers=("wide_open_not_grasp_evidence" if opening>=.06 else
-                 "nearly_closed_may_be_empty" if opening<=.003 else "partial_opening_not_proof_of_grasp")
+        def describe(opening):
+            return ("wide_open_not_grasp_evidence" if opening>=.06 else
+                    "nearly_closed_may_be_empty" if opening<=.003 else "partial_opening_not_proof_of_grasp")
+        if observation.get("coordinate_frame") == interface.FRAME:
+            fingers = {name: describe(arm["gripper_opening_m"]) for name, arm in observation["arms"].items()}
+        else:
+            fingers = describe(observation.get("gripper_opening", 0.08))
         content=json.dumps({"instruction":instruction,"observation":policy_observation,
                             "initial_visual_reference":self.initial_visual_reference,
                             "gripper_interpretation":fingers,"action_history":self.action_memory,
@@ -139,25 +146,3 @@ class VisualPolicy:
         self.history.extend([{"role":"user","content":json.dumps({"instruction":instruction,"step":step})},
                              {"role":"assistant","content":json.dumps(action)}])
         return action,raw,messages
-
-def execute(env,observer,policy,action):
-    kind=action.get("action")
-    if kind not in ("change_query","update_todo"):return env.step(action)[1]
-    if env.ended:raise RuntimeError("Episode ended")
-    env.steps+=1
-    try:
-        if kind=="change_query":
-            q=action.get("queries")
-            if set(action)!={"action","queries"} or not isinstance(q,list) or not 1<=len(q)<=8 or any(not isinstance(v,str) or not 1<=len(v)<=120 for v in q):
-                raise ValueError("change_query requires 1-8 text queries, each 1-120 characters")
-            observer.queries=list(q)
-        else:
-            plan=action.get("plan")
-            if set(action)!={"action","plan"} or not isinstance(plan,str) or len(plan)>1200:
-                raise ValueError("update_todo requires a text plan up to 1200 characters")
-            policy.plan=plan
-        feedback={"accepted":True}
-    except ValueError as exc:
-        env.invalid_actions+=1;feedback={"accepted":False,"reason":str(exc)}
-    if env.steps>=env.max_steps:env._advance(.5);env.ended=True
-    return feedback

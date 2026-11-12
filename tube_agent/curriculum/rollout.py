@@ -4,16 +4,20 @@ import json
 from pathlib import Path
 import time
 import numpy as np
-from tube_agent.lab.policy import VisualPolicy, execute
+from tube_agent import interface
+from tube_agent.lab.policy import VisualPolicy
+from tube_agent.interface import execute_action as execute
 from tube_agent.lab.zap_policy import SYSTEM
-from tube_agent.lab.vision import Observer
 from tube_agent.lab.experiment import write_json
 from .config import digest
-from .env import CurriculumEnv
 
 
 def system_prompt(c):
     g = c["geometry"]
+    if c["action_protocol"] == interface.PROTOCOL:
+        return interface.SYSTEM + (
+            f"\nThe red tube radius is {g['tube_radius']} metres. The square rack hole width is "
+            f"{2*g['hole_half_width']} metres. The blue rack is the source, and the yellow rack is the target.")
     return SYSTEM.split("Known apparatus dimensions:")[0] + (
         f"Known apparatus dimensions: tube radius {g['tube_radius']} m, total length "
         f"{2*(g['tube_radius']+g['tube_half_segment'])} m. Rack hole width {2*g['hole_half_width']} m. "
@@ -55,9 +59,9 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     policy = VisualPolicy(generator, config["policy"]["temperature"] if temperature is None else temperature,
-                          policy_seed, "zap_pose_v1")
+                          policy_seed, config["action_protocol"])
     policy.system = system_prompt(config)
-    policy.version = "upright_visual_v1"
+    policy.version = config["observation"]["version"]
     env = observer = None
     feedback = None
     count = 0
@@ -68,15 +72,14 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
                       top_p=config["policy"]["top_p"] if policy.temperature > 0 else None,
                       deterministic=policy.temperature == 0)
     try:
-        env = CurriculumEnv(scene, config)
-        observer = Observer(env, segmenter)
-        observer.queries = (["red test tube", "blue test tube rack"] if scene["task"] == "T1" else
-                            ["red test tube", "yellow test tube rack"] if scene["task"] in ("T2", "T3") else
-                            ["red test tube", "blue test tube rack", "yellow test tube rack"])
+        env = interface.make_env(scene, config)
+        observer = interface.make_observer(env, segmenter)
         write_json(directory/"initialization.json", {"scene": scene, "state": env.snapshot(),
             "physical_setup_actions": env.initialization_actions, "training_eligible": False})
         with (directory/"trajectory.jsonl").open("w", encoding="utf-8") as stream:
             for saved in prefix or []:
+                if saved.get("action_protocol", "zap_pose_v1") != config["action_protocol"]:
+                    raise ValueError("Prefix action protocol differs from this environment")
                 feedback = execute(env, observer, policy, saved["action"])
                 if (feedback != saved["feedback"] or
                         not same_state(env.snapshot(), saved["state_after"], config["search"]["replay_atol"])):
@@ -87,7 +90,7 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
             stream.flush()
             while not env.ended:
                 observation, images = observer.observe(directory/f"view_{env.steps:03d}" if save_frames else None)
-                observation["observation_version"] = "upright_visual_v1"
+                observation["observation_version"] = policy.version
                 action, raw, messages = policy.act(env.instruction, observation, images, feedback, env.steps)
                 feedback = execute(env, observer, policy, action)
                 policy.remember(action, feedback, env.steps)
@@ -97,12 +100,13 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
                        "state_after": env.snapshot(), "context_after": context(policy, observer),
                        "perception": observer.last_audit, "response_format": policy.last_parse,
                        "source_origin": origin, "policy_seed": policy_seed,
-                       "camera_calibration": observation["cameras"]}
+                       "camera_calibration": observation["cameras"], "action_protocol": config["action_protocol"]}
+                speeds = env.arm_speeds() if config["action_protocol"] == interface.PROTOCOL else env.data.qvel[:7]
                 row["node_eligible"] = (action.get("action") in ("move_to", "set_gripper") and
                     feedback.get("accepted") is True and
                     (action["action"] != "move_to" or feedback.get("reached") is True) and
                     row["judge_after"]["geometry"]["still"] and
-                    float(np.max(np.abs(env.data.qvel[:7]))) <= config["search"]["settled_joint_speed_rad_s"])
+                    float(np.max(np.abs(speeds))) <= config["search"]["settled_joint_speed_rad_s"])
                 if hasattr(generator, "last_response_ids"):
                     row["response_ids"] = list(generator.last_response_ids)
                 if hasattr(generator, "last_input_sha256"):
@@ -140,13 +144,15 @@ def episode(scene, config, directory, generator, segmenter, policy_seed, policy_
 
 def replay(scene, config, rows):
     """No perception/inference; verify one complete root-to-leaf action sequence."""
-    env = CurriculumEnv(scene, config)
+    env = interface.make_env(scene, config)
     class ObserverStub:
         queries = []
     observer = ObserverStub()
-    policy = VisualPolicy(None, action_protocol="zap_pose_v1")
+    policy = VisualPolicy(None, action_protocol=config["action_protocol"])
     try:
         for row in rows:
+            if row.get("action_protocol", "zap_pose_v1") != config["action_protocol"]:
+                raise ValueError("Replay action protocol differs from this environment")
             feedback = execute(env, observer, policy, row["action"])
             if feedback != row["feedback"] or not same_state(env.snapshot(), row["state_after"], config["search"]["replay_atol"]):
                 raise RuntimeError("Saved successful episode does not physically replay")

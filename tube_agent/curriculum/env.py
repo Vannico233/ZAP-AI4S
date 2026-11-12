@@ -30,10 +30,12 @@ class CurriculumEnv(ZapLabEnv):
         if digest(check) != scene["sha256"] or scene["task"] not in TASKS:
             raise ValueError("Invalid immutable scene specification")
         self.task_id = scene["task"]
+        self._robot_owner = {}
         self.setup_mode = True
         self._reset_judge()
         super().__init__("insert", "train", scene["seed"] % 100000,
-                         max_steps=self.spec["policy"]["max_steps"], frame_callback=None)
+                         max_steps=self.spec["policy"]["max_steps"], frame_callback=None,
+                         action_protocol=self.ACTION_PROTOCOL)
         self.scene_start_bottom = self._bottom()
         self.initialization_actions = []
         if self.task_id in ("T2", "T3"):
@@ -119,9 +121,10 @@ class CurriculumEnv(ZapLabEnv):
             center = np.r_[target_xy, g["approach_bottom_z"]+self.radius+self.half_length]
             yield move(center+offset)
 
-    def _relative_motion(self):
-        rotation = self.data.site_xmat[self.tcp_id].reshape(3, 3)
-        relative = rotation.T @ (self.tube_pos-self.tcp)
+    def _relative_motion(self, site=None):
+        site = self.tcp_id if site is None else site
+        rotation = self.data.site_xmat[site].reshape(3, 3)
+        relative = rotation.T @ (self.tube_pos-self.data.site_xpos[site])
         relative_rotation = rotation.T @ self.data.xmat[self.tube_id].reshape(3, 3)
         if self._previous_relative is None:
             speed = angular = 0.
@@ -153,8 +156,8 @@ class CurriculumEnv(ZapLabEnv):
                              g["hole_half_width"]+s["hole_geometry_tolerance_m"]))
         linear = float(np.linalg.norm(self.data.qvel[self.tube_dof:self.tube_dof+3]))
         angular = float(np.linalg.norm(self.data.qvel[self.tube_dof+3:self.tube_dof+6]))
-        released = sum(self.data.qpos[7:9]) >= s["released_opening_m"] and not self._contacts()
-        withdrawn = float(np.linalg.norm(self.tcp-self.tube_pos))
+        released = self._released(s["released_opening_m"])
+        withdrawn = self._nearest_tcp_distance(self.tube_pos)
         depth = g["target_rim_z"]-bottom
         return dict(bottom=bottom, horizontal_error=horizontal, tilt_deg=tilt, inside=inside,
                     depth=depth, released=bool(released), withdrawal=withdrawn,
@@ -162,16 +165,29 @@ class CurriculumEnv(ZapLabEnv):
                     still=linear <= s["linear_speed_m_s"] and angular <= s["angular_speed_rad_s"],
                     seated=inside and tilt <= s["tilt_deg"] and abs(depth-s["target_depth_m"]) <= s["depth_tolerance_m"])
 
+    def _nearest_tcp_distance(self, point):
+        return min(float(np.linalg.norm(self.data.site_xpos[arm.site] - point)) for arm in self.arms.values())
+
+    def _released(self, threshold):
+        return sum(self.data.qpos[7:9]) >= threshold and not self._contacts()
+
     def _collision_force(self):
+        if not self._robot_owner:
+            for name, prefix in self.ARM_PREFIXES.items():
+                base = self.model.body(prefix + "link0").id
+                # Classify complete kinematic subtrees, including both finger pads.
+                for body_id in range(base, self.model.nbody):
+                    parent = self.model.body_parentid[body_id]
+                    if body_id == base or self._robot_owner.get(parent) == name:
+                        self._robot_owner[body_id] = name
+            self._fixtures = {0, self.model.body("source_rack").id, self.model.body("target_rack").id}
         maximum = 0.
+        force = np.empty(6)
         for contact_index, contact in enumerate(self.data.contact):
-            ids = (int(self.model.geom_bodyid[contact.geom1]), int(self.model.geom_bodyid[contact.geom2]))
-            # Severe robot contact with racks/table; ordinary tube/finger grip excluded.
-            names = [self.model.body(i).name for i in ids]
-            fixture = any(n in ("world", "source_rack", "target_rack") for n in names)
-            arm = any(n in ("hand", "left_finger", "right_finger") or n.startswith("link") for n in names)
-            if fixture and arm:
-                force = np.zeros(6)
+            a, b = self.model.geom_bodyid[[contact.geom1, contact.geom2]]
+            arm_a, arm_b = self._robot_owner.get(a), self._robot_owner.get(b)
+            if ((arm_a and b in self._fixtures) or (arm_b and a in self._fixtures)
+                    or (arm_a and arm_b and arm_a != arm_b)):
                 mujoco.mj_contactForce(self.model, self.data, contact_index, force)
                 maximum = max(maximum, float(np.linalg.norm(force[:3])))
         return maximum
@@ -218,7 +234,7 @@ class CurriculumEnv(ZapLabEnv):
         r, g, s = self.spec["reward"], self.spec["geometry"], self.spec["success"]
         clip = lambda x: float(np.clip(x, 0, 1))
         grasp_point = self.tube_pos + np.array([0., 0., g["grasp_tcp_above_floor"]-self.radius-self.half_length])
-        approach = clip(1-np.linalg.norm(self.tcp-grasp_point)/r["approach_scale_m"])
+        approach = clip(1-self._nearest_tcp_distance(grasp_point)/r["approach_scale_m"])
         horizontal = clip(1-st["horizontal_error"]/r["horizontal_scale_m"])
         alignment = clip(1-st["horizontal_error"]/r["alignment_scale_m"])
         height = clip(1-abs(st["bottom"]-g["approach_bottom_z"])/r["height_scale_m"])

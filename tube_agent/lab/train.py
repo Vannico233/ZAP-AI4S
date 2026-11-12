@@ -13,6 +13,7 @@ from pathlib import Path
 import random
 import os
 import numpy as np
+from tube_agent.posttrain import dr_grpo_loss
 from tube_agent.model_utils import DEFAULT_MODEL,resolve_model
 from tube_agent.serve import build_inputs
 from .env import TRAIN_TASKS
@@ -30,13 +31,6 @@ def clipped_loss(new_logp,old_logp,advantage,clip=.2):
     ratio=torch.exp(new_logp-old_logp)
     return -torch.minimum(ratio*advantage,torch.clamp(ratio,1-clip,1+clip)*advantage).mean()
 
-
-def dr_grpo_loss(new_logp,old_logp,advantage,token_budget,clip=.2):
-    """Fixed maximum-episode token denominator; no sampled-length normalization."""
-    import torch
-    if token_budget<1:raise ValueError("Positive token budget required")
-    ratio=torch.exp(new_logp-old_logp)
-    return -torch.minimum(ratio*advantage,torch.clamp(ratio,1-clip,1+clip)*advantage).sum()/token_budget
 
 def load(model_path,adapter=None,rank=16,device="cuda:0",trainable=True):
     import torch

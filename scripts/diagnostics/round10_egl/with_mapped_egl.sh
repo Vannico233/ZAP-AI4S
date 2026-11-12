@@ -12,6 +12,9 @@ export ZAP_EGL_AUDIT_DIR="$(cd "$1" && pwd -P)"
 shift
 test -f "$project/.runtime/egl-jammy/EGL_RUNTIME.json"
 "$project/.venv-linux/bin/python" "$project/scripts/check_render.py" --verify-runtime
+if [[ -n "${ZAP_SOFTWARE_RENDER_GPUS:-}" && -f "$project/.runtime/osmesa-jammy/lib/libOSMesa.so.8" ]]; then
+  export LD_LIBRARY_PATH="$project/.runtime/osmesa-jammy/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 export LD_LIBRARY_PATH="$project/.runtime/egl-jammy/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYOPENGL_PLATFORM=egl MUJOCO_GL=egl TUBE_MUJOCO_GL=egl
 export CUDA_DEVICE_ORDER=PCI_BUS_ID

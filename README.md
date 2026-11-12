@@ -1,16 +1,82 @@
-# ZAP-AI4S: four-task visual laboratory reproduction
+# ZAP-AI4S laboratory simulation
 
-**Upright-tube curriculum (2026-11-10):** the new requested experiment is documented
-in [docs/tube-curriculum-v1.md](docs/tube-curriculum-v1.md). It rebuilds T1-T4 around
-upright tubes, uses 32 train/30 held-out scenes per task, 960 warm-up episodes,
-a shared 128-continuation search budget, two SFT epochs from `after_warmup`, and
-fixed `original`/`after_warmup`/`after_sft` evaluation. **No main RL is launched.**
-Start with `bash scripts/start_tube_curriculum.sh runs/tube_curriculum/v1` on the
-existing four-H100 instance after updating the shared checkout. Existing older
-recipes below remain available for historical experiments.
+## Two Panda arms and three RGB-D cameras
 
-**New experiments:** use [LAB_GUIDE.md](LAB_GUIDE.md) for `pick`, `transport`,
-`insert`, `unscrew`, and held-out `rack_transfer`. The new `tube_agent.lab` flow
+The current upright-tube environment has two independently controlled Panda arms.
+The fixed `middle` camera faces the workbench. `left_wrist` and `right_wrist`
+move with their hands. The policy observes the three images in that order.
+Both TCP poses, motion targets and mask-derived 3D points use the **same
+middle-camera optical frame**. Its origin is the camera center. X points right,
+Y down and Z forward. Positions are in metres. The scalar-first unit quaternion
+`[w, x, y, z]` maps the TCP's local axes into this frame. The TCP origin is the
+midpoint between the finger pads. Each motor action names one arm.
+
+![MuJoCo views at reset and as the right hand approaches the tube](docs/bimanual-cameras.jpg)
+
+### Work with the environment
+
+Use the public functions in [tube_agent/interface.py](tube_agent/interface.py).
+This example uses only the installed simulator. It takes a three-view snapshot
+and moves the right TCP one centimetre along the middle camera's horizontal axis.
+
+```python
+from tube_agent import interface
+
+env = interface.open_scene("T1_train_000")
+try:
+    frames = interface.capture_rgbd(env)
+    left_depth = frames["left_wrist"]["depth"]  # axial depth in metres
+    pose = interface.ee_pose(env, "right")
+    position = pose["position"].copy()
+    position[0] += 0.01
+    feedback = interface.move_to(env, "right", position, pose["quaternion_wxyz"])
+    print(feedback)
+finally:
+    env.close()
+```
+
+Each frame includes RGB, depth, pinhole intrinsics and `T_middle_from_view`,
+the current 4×4 transform from that camera's optical frame to the middle frame.
+Use `set_gripper(env, arm, opening)` to open or close a hand. The command ranges
+from 0 (closed) to 1 (fully open, 0.08 m). `make_observer(env, segmenter)`
+adds SAM mask measurements for policy rollouts.
+
+To render a scene and check its physical feasibility with scripted actions:
+
+```sh
+python -m tube_agent.curriculum.preflight --scene T1_train_000 --render --output runs/checks/bimanual_t1
+```
+
+This command saves three PNGs and a diagnostic JSON. Diagnostic trajectories
+are marked `training_eligible: false`. The current tasks are lift (T1), carry
+a preheld tube (T2), insert and release a preheld tube (T3), and transfer from
+the source rack through insertion and withdrawal (T4).
+
+### Debug post-training
+
+The production GRPO loss and update, success-prefix search, SFT sample selection
+and SFT update live in [tube_agent/posttrain.py](tube_agent/posttrain.py).
+For PyCharm, use module name `tube_agent.posttrain` and the repository root as
+the working directory. Set a breakpoint in `inspect_group` to inspect rewards
+from a saved batch, or in `run_grpo`, `dr_grpo_loss` or `run_sft` for those
+stages. The commands below read a saved metric or print the configured plan.
+
+```sh
+python -m tube_agent.posttrain inspect --metrics /path/to/warmup/metrics/round_12.json --group 0
+python -m tube_agent.posttrain plan
+```
+
+The bimanual config inherits the original task geometry and reward settings and
+records a new action and observation version. The launcher freezes the resolved
+config in each run. Historical single-arm checkpoints and evaluations retain
+their original action coordinates and input views. See the
+[bimanual config](configs/tube_curriculum_bimanual.json) and the
+[single-arm curriculum](docs/tube-curriculum-v1.md).
+
+## Historical single-arm experiments
+
+The earlier [single-arm lab](LAB_GUIDE.md) covers `pick`, `transport`,
+`insert`, `unscrew`, and held-out `rack_transfer`. Its `tube_agent.lab` flow
 uses two RGB-D views, native SAM 3.1, Qwen3.5-4B, fixed-seed sampling, model-prefix
 search, multimodal self-success SFT and online GRPO with staged rewards.
 SAM weights download anonymously from ModelScope with checksum verification.
@@ -27,7 +93,7 @@ The prior v3 pick probe's 4/9 successes remain legacy results, not new-interface
 successes. The subsequent uploaded 72-episode snapshot had only one success,
 zero eligible new successes, and no basis for entering training.
 
-**Current four-H100 recipe:** the v4 pose probe is complete (0/12 model
+**Historical four-H100 recipe:** the v4 pose probe is complete (0/12 model
 successes). Use `bash scripts/start_zap_recipe.sh runs/lab_zap_recipe/seed0_v5`
 after updating on the CPU instance. SAM uses GPU 1; GPUs 0, 2, 3 train a shared
 policy. The explicitly authorized warm-up starts from zero successes: 68 GRPO

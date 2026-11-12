@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tube_agent.lab.experiment import read_json, write_json
 from tube_agent.lab.vision import SamClient
-from .config import load, file_digest
+from .config import load, file_digest, digest
 from .learning import load_model, Generator
 from .rollout import episode
 
@@ -43,7 +43,9 @@ def main():
                 directory.rename(directory.with_name(directory.name+".incomplete-"+datetime.now(timezone.utc).strftime("%H%M%S%f")))
             if (directory/"result.json").exists():
                 result = read_json(directory/"result.json")
-                if result["scene"] != scene or result["policy_version"] != a.node or result["generator_provenance"]["adapter_sha256"] != frozen:
+                if (result["scene"] != scene or result["policy_version"] != a.node
+                        or result["config_sha256"] != digest(c)
+                        or result["generator_provenance"]["adapter_sha256"] != frozen):
                     raise ValueError("Cached evaluation belongs to another scene/model")
             else:
                 if directory.exists(): directory.rename(directory.with_name(directory.name+".incomplete-"+datetime.now(timezone.utc).strftime("%H%M%S%f")))
